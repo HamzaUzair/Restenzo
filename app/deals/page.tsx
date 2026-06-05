@@ -152,6 +152,7 @@ import {
         items: data.items.map((i) => ({
           id: i.id,
           name: i.name,
+          variationId: i.variationId ?? null,
           quantity: i.quantity,
         })),
       };

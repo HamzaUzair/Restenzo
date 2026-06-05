@@ -16,7 +16,6 @@ export const SUPER_ADMIN_ALLOWED_PATHS = new Set([
   "/subscriptions",
   "/plans",
   "/billing",
-  "/setup-health",
   "/support",
 ]);
 

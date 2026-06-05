@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { X, Save, Loader2 } from "lucide-react";
 import BranchForm from "./BranchForm";
 import type { Branch, BranchFormData } from "@/types/branch";
+import { validateBranchTextField } from "@/lib/branch-field-validation";
 
 const emptyForm: BranchFormData = {
   branch_name: "",
@@ -70,9 +71,22 @@ const CreateBranchModal: React.FC<CreateBranchModalProps> = ({
 
   const validate = (): boolean => {
     const newErrors: Partial<Record<keyof BranchFormData, string>> = {};
-    if (!formData.branch_name.trim()) newErrors.branch_name = "Branch name is required";
-    if (!formData.address?.trim()) newErrors.address = "Complete address is required";
-    if (!formData.city?.trim()) newErrors.city = "City is required";
+
+    const branchNameError = validateBranchTextField(
+      formData.branch_name,
+      "Branch name is required"
+    );
+    if (branchNameError) newErrors.branch_name = branchNameError;
+
+    const addressError = validateBranchTextField(
+      formData.address,
+      "Complete address is required"
+    );
+    if (addressError) newErrors.address = addressError;
+
+    const cityError = validateBranchTextField(formData.city, "City is required");
+    if (cityError) newErrors.city = cityError;
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };

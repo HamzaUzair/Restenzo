@@ -8,14 +8,14 @@ import Reveal from "@/components/site/Reveal";
 const channels = [
   {
     icon: Mail,
-    title: "Email us",
+    title: "Email Us",
     value: "hello@restenzo.com",
     desc: "Our team replies within one business day.",
   },
   {
     icon: Phone,
     title: "Call us",
-    value: "+1 (800) 555-0199",
+    value: "03026271991",
     desc: "Mon – Fri, 9:00 – 18:00 UTC",
   },
   {

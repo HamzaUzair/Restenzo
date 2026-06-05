@@ -58,6 +58,13 @@ export interface Order {
   gstAmount?: number;
   serviceCharge: number;
   paid: boolean;
+  /**
+   * Cashier-entered Card invoice / Online transaction ID captured at
+   * the moment of payment. Required server-side for Card / Online,
+   * always `null` for Cash, and `null` for legacy paid orders that
+   * were captured before this field was added.
+   */
+  paymentReferenceId?: string | null;
 }
 
 export const ORDER_STATUSES: OrderStatus[] = [

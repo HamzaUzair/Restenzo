@@ -5,9 +5,14 @@ import Link from "next/link";
 import { Check, Sparkles } from "lucide-react";
 import Container from "../Container";
 import Reveal from "../Reveal";
-import { PLANS, YEARLY_DISCOUNT_PERCENT, type BillingCycle } from "@/lib/pricing";
+import { YEARLY_DISCOUNT_PERCENT, type BillingCycle } from "@/lib/pricing";
+import type { PublicPlan } from "@/types/plan";
 
-const PricingSection: React.FC = () => {
+interface PricingSectionProps {
+  plans: PublicPlan[];
+}
+
+const PricingSection: React.FC<PricingSectionProps> = ({ plans }) => {
   const [cycle, setCycle] = useState<BillingCycle>("monthly");
   const isYearly = cycle === "yearly";
 
@@ -59,26 +64,26 @@ const PricingSection: React.FC = () => {
 
         {/* Cards */}
         <div className="mt-14 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {PLANS.map((plan, i) => {
-            const isEnterprise = plan.id === "enterprise";
-            const price = isYearly ? plan.yearly : plan.monthly;
-            const signupHref = `/signup?plan=${plan.id}&cycle=${cycle}`;
-            const href = isEnterprise ? "/contact" : signupHref;
+          {plans.map((plan, i) => {
+            const isCustom = plan.isCustom;
+            const price = isYearly ? plan.yearlyPrice : plan.monthlyPrice;
+            const signupHref = `/signup?plan=${plan.slug}&cycle=${cycle}`;
+            const href = isCustom ? "/contact" : signupHref;
 
             return (
               <Reveal
-                key={plan.id}
+                key={plan.slug}
                 delay={i * 100}
                 className={`group relative flex flex-col rounded-3xl p-8 card-hover ${
-                  plan.highlighted
+                  plan.isPopular
                     ? "border-2 border-[#ff5a1f] bg-white dark:bg-[#0b1220] shadow-[0_40px_120px_-40px_rgba(255,90,31,0.6)]"
                     : "border border-gray-100 dark:border-white/10 bg-white dark:bg-white/[0.02]"
                 }`}
               >
-                {plan.highlighted && (
+                {plan.isPopular && (
                   <span className="absolute -top-3 left-1/2 -translate-x-1/2 inline-flex items-center gap-1 px-3 py-1 rounded-full bg-gradient-brand text-white text-[11px] font-bold tracking-wide shadow-lg">
                     <Sparkles className="h-3 w-3" />
-                    {plan.badge}
+                    Most popular
                   </span>
                 )}
 
@@ -87,12 +92,12 @@ const PricingSection: React.FC = () => {
                     {plan.name}
                   </h3>
                   <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                    {plan.tagline}
+                    {plan.description}
                   </p>
                 </div>
 
                 <div className="mt-6 flex items-baseline gap-1.5">
-                  {isEnterprise ? (
+                  {isCustom ? (
                     <span className="text-4xl font-extrabold text-gray-900 dark:text-white">
                       Custom
                     </span>
@@ -102,15 +107,15 @@ const PricingSection: React.FC = () => {
                         ${price}
                       </span>
                       <span className="text-sm text-gray-500 dark:text-gray-400">
-                        /mo
+                        {plan.billingLabel || "/mo"}
                       </span>
                     </>
                   )}
                 </div>
-                {!isEnterprise && (
+                {!isCustom && (
                   <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                     {isYearly
-                      ? `Billed yearly $${plan.yearly * 12}/yr`
+                      ? `Billed yearly $${plan.yearlyPrice * 12}/yr`
                       : "Billed monthly"}
                   </p>
                 )}
@@ -118,12 +123,12 @@ const PricingSection: React.FC = () => {
                 <Link
                   href={href}
                   className={`mt-6 inline-flex items-center justify-center px-5 py-3 rounded-xl font-semibold text-sm transition-all ${
-                    plan.highlighted
+                    plan.isPopular
                       ? "bg-gradient-brand text-white shadow-[0_16px_40px_-14px_rgba(255,90,31,0.6)] hover:-translate-y-0.5"
                       : "border border-gray-200 dark:border-white/10 text-gray-900 dark:text-white hover:border-[#ff5a1f]/40 hover:text-[#ff5a1f]"
                   }`}
                 >
-                  {plan.cta}
+                  {plan.ctaLabel || "Get started"}
                 </Link>
 
                 <ul className="mt-7 space-y-2.5">

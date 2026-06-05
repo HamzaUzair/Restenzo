@@ -162,6 +162,20 @@ const SalesReceiptModal: React.FC<SalesReceiptModalProps> = ({ order, onClose })
                   : "N/A"}
               </span>
             </div>
+            {order.paymentReferenceId && order.paymentReferenceId.trim().length > 0 && (
+              <div className="flex justify-between gap-3">
+                <span className="text-gray-400">
+                  {order.paymentMethod === "Card"
+                    ? "Card Invoice ID"
+                    : order.paymentMethod === "Online"
+                    ? "Online Payment ID"
+                    : "Payment Ref"}
+                </span>
+                <span className="font-semibold text-gray-700 text-right break-all">
+                  {order.paymentReferenceId}
+                </span>
+              </div>
+            )}
           </div>
 
           <p className="text-center text-[10px] text-gray-300 mt-4">

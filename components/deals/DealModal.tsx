@@ -40,8 +40,10 @@ import { apiFetch } from "@/lib/auth-client";
   };
 
   type ApiMenuVariation = {
+    id: number;
     name: string;
     price: number;
+    status?: string;
   };
 
   type ApiMenuRow = {
@@ -49,6 +51,7 @@ import { apiFetch } from "@/lib/auth-client";
     itemName: string;
     category: string;
     price: number;
+    basePrice: number | null;
     hasVariations: boolean;
     variations: ApiMenuVariation[];
     status: "active" | "inactive";
@@ -90,7 +93,10 @@ import { apiFetch } from "@/lib/auth-client";
      if (editDeal) {
        const items: DealFormDataItem[] = editDeal.items.map((i) => ({
          id: i.id,
-         name: i.name,
+         name: i.itemName ?? i.name,
+         variationId: i.variationId ?? null,
+         variationName: i.variationName ?? null,
+         unitPrice: i.unitPrice,
          quantity: i.quantity,
        }));
        setForm({
@@ -116,8 +122,19 @@ import { apiFetch } from "@/lib/auth-client";
      setErrors({});
   }, [isOpen, editDeal, branches, lockedBranchId]);
 
-  const selectedById = useMemo(
-    () => new Map(form.items.map((item) => [item.id, item])),
+  // A deal line is uniquely identified by its dish id + chosen variation id
+  // (or "base" for a plain, no-variation item).
+  const lineKey = (dishId: string, variationId: number | null) =>
+    `${dishId}:${variationId ?? "base"}`;
+
+  const selectedByKey = useMemo(
+    () =>
+      new Map(
+        form.items.map((item) => [
+          lineKey(item.id, item.variationId ?? null),
+          item,
+        ])
+      ),
     [form.items]
   );
 
@@ -154,9 +171,14 @@ import { apiFetch } from "@/lib/auth-client";
             id: String(row.id),
             name: row.itemName,
             category: row.category,
-            price: Number(row.price),
+            price: Number(row.basePrice ?? row.price),
             hasVariations: row.hasVariations,
-            variations: row.variations ?? [],
+            variations: (row.variations ?? []).map((v) => ({
+              id: v.id,
+              name: v.name,
+              price: Number(v.price),
+              status: v.status,
+            })),
           });
           itemsByCategory.set(row.category, existing);
         }
@@ -188,24 +210,41 @@ import { apiFetch } from "@/lib/auth-client";
         const optionsById = new Map(
           groups.flatMap((g) => g.items.map((item) => [item.id, item] as const))
         );
-        const optionsByName = new Map(
-          groups.flatMap((g) =>
-            g.items.map((item) => [item.name.toLowerCase(), item] as const)
-          )
-        );
 
         setForm((prev) => {
           const normalized = prev.items
             .map((item) => {
-              const byId = optionsById.get(item.id);
-              const byName = optionsByName.get(item.name.toLowerCase());
-              const resolved = byId ?? byName;
+              const resolved = optionsById.get(item.id);
               if (!resolved) return null;
+
+              // Re-resolve the chosen variation (if any) against the freshly
+              // loaded menu so renamed/repriced/removed variations stay in sync.
+              if (item.variationId != null) {
+                const variation = resolved.variations.find(
+                  (v) => v.id === item.variationId
+                );
+                if (!variation) return null;
+                return {
+                  id: resolved.id,
+                  name: resolved.name,
+                  variationId: variation.id,
+                  variationName: variation.name,
+                  unitPrice: variation.price,
+                  quantity: Math.max(1, item.quantity || 1),
+                } as DealFormDataItem;
+              }
+
+              // Plain item line — but if the item now *requires* variations,
+              // drop it so the admin must re-pick a specific variation.
+              if (resolved.hasVariations) return null;
               return {
                 id: resolved.id,
                 name: resolved.name,
+                variationId: null,
+                variationName: null,
+                unitPrice: resolved.price,
                 quantity: Math.max(1, item.quantity || 1),
-              };
+              } as DealFormDataItem;
             })
             .filter((item): item is DealFormDataItem => item !== null);
 
@@ -227,24 +266,43 @@ import { apiFetch } from "@/lib/auth-client";
     };
   }, [isOpen, form.branchId]);
 
-   const toggleItem = (id: string, name: string) => {
+   const toggleLine = (
+     dishId: string,
+     name: string,
+     variationId: number | null,
+     variationName: string | null,
+     unitPrice: number
+   ) => {
+     const key = lineKey(dishId, variationId);
      setForm((prev) => {
-       const exists = prev.items.find((i) => i.id === id);
+       const exists = prev.items.some(
+         (i) => lineKey(i.id, i.variationId ?? null) === key
+       );
        if (exists) {
-         return { ...prev, items: prev.items.filter((i) => i.id !== id) };
+         return {
+           ...prev,
+           items: prev.items.filter(
+             (i) => lineKey(i.id, i.variationId ?? null) !== key
+           ),
+         };
        }
        return {
          ...prev,
-         items: [...prev.items, { id, name, quantity: 1 }],
+         items: [
+           ...prev.items,
+           { id: dishId, name, variationId, variationName, unitPrice, quantity: 1 },
+         ],
        };
      });
    };
 
-   const updateItemQty = (id: string, quantity: number) => {
+   const updateLineQty = (key: string, quantity: number) => {
      setForm((prev) => ({
        ...prev,
        items: prev.items.map((i) =>
-         i.id === id ? { ...i, quantity: Math.max(1, quantity || 1) } : i
+         lineKey(i.id, i.variationId ?? null) === key
+           ? { ...i, quantity: Math.max(1, quantity || 1) }
+           : i
        ),
      }));
    };
@@ -252,6 +310,17 @@ import { apiFetch } from "@/lib/auth-client";
   const toggleCategoryExpanded = (category: string) => {
     setExpandedCategories((prev) => ({ ...prev, [category]: !prev[category] }));
   };
+
+  // Regular (a-la-carte) total of the selected lines — shown next to the deal
+  // price so the admin can see the saving the deal represents.
+  const regularTotal = useMemo(
+    () =>
+      form.items.reduce(
+        (sum, i) => sum + (i.unitPrice ?? 0) * Math.max(1, i.quantity || 1),
+        0
+      ),
+    [form.items]
+  );
 
    const validate = (): boolean => {
      const e: Partial<Record<keyof DealFormData, string>> = {};
@@ -469,7 +538,82 @@ import { apiFetch } from "@/lib/auth-client";
                     {expandedCategories[group.category] && (
                       <div className="border-t border-gray-100 px-3 py-2 space-y-2">
                         {group.items.map((item) => {
-                          const selected = selectedById.get(item.id);
+                          const hasVars =
+                            item.hasVariations && item.variations.length > 0;
+
+                          // Items with variations: the admin picks one or more
+                          // specific variations (not the bare item).
+                          if (hasVars) {
+                            return (
+                              <div
+                                key={item.id}
+                                className="rounded-lg border border-gray-200 bg-white"
+                              >
+                                <div className="px-3 py-2 border-b border-gray-100">
+                                  <p className="text-sm font-semibold text-gray-800 truncate">
+                                    {item.name}
+                                  </p>
+                                  <p className="text-[11px] text-gray-400">
+                                    {item.variations.length} variations · pick the
+                                    ones to include
+                                  </p>
+                                </div>
+                                <div className="px-3 py-2 space-y-1.5">
+                                  {item.variations.map((v) => {
+                                    const key = lineKey(item.id, v.id);
+                                    const selected = selectedByKey.get(key);
+                                    return (
+                                      <div
+                                        key={key}
+                                        className={`flex items-center justify-between gap-3 rounded-lg px-2.5 py-1.5 text-sm ${
+                                          selected
+                                            ? "bg-[#ff5a1f]/5 border border-[#ff5a1f]/30"
+                                            : "bg-gray-50 border border-transparent"
+                                        }`}
+                                      >
+                                        <label className="flex items-start gap-2.5 text-gray-700 cursor-pointer min-w-0">
+                                          <input
+                                            type="checkbox"
+                                            className="mt-0.5 rounded border-gray-300 text-[#ff5a1f] focus:ring-[#ff5a1f]"
+                                            checked={!!selected}
+                                            onChange={() =>
+                                              toggleLine(
+                                                item.id,
+                                                item.name,
+                                                v.id,
+                                                v.name,
+                                                v.price
+                                              )
+                                            }
+                                          />
+                                          <div className="min-w-0">
+                                            <p className="truncate">{v.name}</p>
+                                            <p className="text-[11px] text-gray-500">
+                                              PKR {v.price.toLocaleString()}
+                                            </p>
+                                          </div>
+                                        </label>
+                                        <input
+                                          type="number"
+                                          min={1}
+                                          disabled={!selected}
+                                          value={selected?.quantity ?? 1}
+                                          onChange={(e) =>
+                                            updateLineQty(key, Number(e.target.value))
+                                          }
+                                          className="w-16 border border-gray-200 rounded-md px-2 py-1 text-xs text-gray-700 disabled:bg-gray-100 disabled:text-gray-400"
+                                        />
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          // Plain item (no variations).
+                          const key = lineKey(item.id, null);
+                          const selected = selectedByKey.get(key);
                           return (
                             <div
                               key={item.id}
@@ -484,15 +628,20 @@ import { apiFetch } from "@/lib/auth-client";
                                   type="checkbox"
                                   className="mt-0.5 rounded border-gray-300 text-[#ff5a1f] focus:ring-[#ff5a1f]"
                                   checked={!!selected}
-                                  onChange={() => toggleItem(item.id, item.name)}
+                                  onChange={() =>
+                                    toggleLine(
+                                      item.id,
+                                      item.name,
+                                      null,
+                                      null,
+                                      item.price
+                                    )
+                                  }
                                 />
                                 <div className="min-w-0">
                                   <p className="truncate">{item.name}</p>
                                   <p className="text-[11px] text-gray-500">
                                     PKR {item.price.toLocaleString()}
-                                    {item.hasVariations && item.variations.length > 0
-                                      ? ` • ${item.variations.length} variations`
-                                      : ""}
                                   </p>
                                 </div>
                               </label>
@@ -502,7 +651,7 @@ import { apiFetch } from "@/lib/auth-client";
                                 disabled={!selected}
                                 value={selected?.quantity ?? 1}
                                 onChange={(e) =>
-                                  updateItemQty(item.id, Number(e.target.value))
+                                  updateLineQty(key, Number(e.target.value))
                                 }
                                 className="w-16 border border-gray-200 rounded-md px-2 py-1 text-xs text-gray-700 disabled:bg-gray-100 disabled:text-gray-400"
                               />
@@ -515,6 +664,55 @@ import { apiFetch } from "@/lib/auth-client";
                 ))
               )}
              </div>
+
+            {/* Price preview of the selected lines */}
+            {form.items.length > 0 && (
+              <div className="mt-3 rounded-lg border border-gray-100 bg-white p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                    Selected ({form.items.length})
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    Regular total:{" "}
+                    <span className="font-semibold text-gray-700">
+                      PKR {regularTotal.toLocaleString()}
+                    </span>
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  {form.items.map((line) => {
+                    const label = line.variationName
+                      ? `${line.name} (${line.variationName})`
+                      : line.name;
+                    const lineTotal =
+                      (line.unitPrice ?? 0) * Math.max(1, line.quantity || 1);
+                    return (
+                      <div
+                        key={lineKey(line.id, line.variationId ?? null)}
+                        className="flex items-center justify-between gap-2 text-xs text-gray-600"
+                      >
+                        <span className="truncate pr-2">
+                          {label}
+                          <span className="text-gray-400"> × {line.quantity}</span>
+                        </span>
+                        <span className="shrink-0 text-gray-500">
+                          PKR {lineTotal.toLocaleString()}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+                {form.price !== "" && !isNaN(Number(form.price)) && (
+                  <div className="mt-2 pt-2 border-t border-gray-100 flex items-center justify-between text-xs">
+                    <span className="font-semibold text-gray-600">Deal price</span>
+                    <span className="font-bold text-[#ff5a1f]">
+                      PKR {Number(form.price).toLocaleString()}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
              {errors.items && (
                <p className="text-xs text-red-500 mt-1">{errors.items}</p>
              )}

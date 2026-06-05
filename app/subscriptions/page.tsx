@@ -9,6 +9,7 @@ import {
   XCircle,
   RefreshCw,
   Search,
+  RotateCw,
 } from "lucide-react";
 import PlatformShell from "@/components/platform/PlatformShell";
 import StatCard from "@/components/platform/StatCard";
@@ -16,6 +17,7 @@ import StatusBadge, {
   type PlatformBadgeTone,
 } from "@/components/platform/StatusBadge";
 import { usePlatformOverview } from "@/components/platform/usePlatformOverview";
+import { apiFetch } from "@/lib/auth-client";
 import { formatUSD } from "@/lib/platform";
 import type { DerivedSubscription } from "@/lib/platform";
 
@@ -58,6 +60,8 @@ function paymentTone(
       return "danger";
     case "Pending":
       return "warning";
+    case "Trial":
+      return "trial";
     default:
       return "neutral";
   }
@@ -68,6 +72,31 @@ export default function SubscriptionsPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<SubStatusFilter>("all");
   const [cycleFilter, setCycleFilter] = useState<CycleFilter>("all");
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+
+  const syncStripe = async () => {
+    setSyncing(true);
+    setSyncMessage(null);
+    try {
+      const res = await apiFetch("/api/admin/subscriptions/sync-stripe", {
+        method: "POST",
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSyncMessage(body.error || "Stripe sync failed.");
+        return;
+      }
+      setSyncMessage(
+        `Synced ${body.updated ?? 0} of ${body.total ?? 0} subscriptions from Stripe.`
+      );
+      await refresh();
+    } catch {
+      setSyncMessage("Stripe sync failed. Please try again.");
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const subs: DerivedSubscription[] = data?.subscriptions ?? [];
 
@@ -92,14 +121,25 @@ export default function SubscriptionsPage() {
       title="Subscriptions"
       subtitle="Monitor every tenant subscription. Stripe billing is wired in — these numbers come straight from your restaurants table."
       headerExtra={
-        <button
-          onClick={refresh}
-          disabled={loading}
-          className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
-        >
-          <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
-          Refresh
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={syncStripe}
+            disabled={syncing || loading}
+            title="Pull the latest status & payment state from Stripe for every tenant. Useful in test mode when webhooks are not running."
+            className="inline-flex items-center gap-2 rounded-lg bg-[#ff5a1f] px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#e04e18] disabled:opacity-50"
+          >
+            <RotateCw size={15} className={syncing ? "animate-spin" : ""} />
+            {syncing ? "Syncing…" : "Sync Stripe"}
+          </button>
+          <button
+            onClick={refresh}
+            disabled={loading}
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+          >
+            <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
+            Refresh
+          </button>
+        </div>
       }
     >
       <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-5">
@@ -181,6 +221,12 @@ export default function SubscriptionsPage() {
       {error && (
         <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
           {error}
+        </div>
+      )}
+
+      {syncMessage && (
+        <div className="mb-4 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-700">
+          {syncMessage}
         </div>
       )}
 

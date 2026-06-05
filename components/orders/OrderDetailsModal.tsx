@@ -139,6 +139,23 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
               </p>
             </div>
 
+            {/* Payment Reference ID — Card / Online only, hidden for Cash */}
+            {order.paymentReferenceId && order.paymentReferenceId.trim().length > 0 && (
+              <div className="rounded-xl border border-gray-100 bg-gray-50/50 p-3.5 col-span-2">
+                <p className="text-[10px] font-semibold text-[#ff5a1f] uppercase tracking-wider mb-1">
+                  {order.paymentMode === "Card"
+                    ? "Card Invoice ID"
+                    : order.paymentMode === "Online"
+                    ? "Online Payment ID"
+                    : "Payment Reference ID"}
+                </p>
+                <p className="flex items-center gap-1.5 text-sm font-bold text-gray-800 break-all">
+                  <CreditCard size={14} className="text-gray-400 shrink-0" />
+                  {order.paymentReferenceId}
+                </p>
+              </div>
+            )}
+
             {/* Branch */}
             <div className="rounded-xl border border-gray-100 bg-gray-50/50 p-3.5">
               <p className="text-[10px] font-semibold text-[#ff5a1f] uppercase tracking-wider mb-1">

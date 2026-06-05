@@ -6,6 +6,9 @@ import {
   requireAuth,
 } from "@/lib/server-auth";
 import { generateUniqueBranchCode } from "@/lib/branch-code";
+import { seedDefaultCategoriesForBranch } from "@/lib/seedDefaultCategories";
+import { getBranchUsage, branchLimitMessage } from "@/lib/branch-limits";
+import { validateBranchTextField } from "@/lib/branch-field-validation";
 
 /* ── GET /api/branches ──
  *   Super Admin    → all branches (optional ?restaurantId= filter)
@@ -111,21 +114,32 @@ export async function POST(request: NextRequest) {
       ? Number(body.restaurant_id)
       : null;
 
-    if (!branch_name?.trim()) {
+    const branchNameError = validateBranchTextField(
+      branch_name,
+      "Branch name is required"
+    );
+    if (branchNameError) {
       return NextResponse.json(
-        { error: "Branch name is required" },
+        { error: branchNameError },
         { status: 400 }
       );
     }
-    if (!address?.trim()) {
+
+    const addressError = validateBranchTextField(
+      address,
+      "Complete address is required"
+    );
+    if (addressError) {
       return NextResponse.json(
-        { error: "Complete address is required" },
+        { error: addressError },
         { status: 400 }
       );
     }
-    if (!city?.trim()) {
+
+    const cityError = validateBranchTextField(city, "City is required");
+    if (cityError) {
       return NextResponse.json(
-        { error: "City is required" },
+        { error: cityError },
         { status: 400 }
       );
     }
@@ -188,6 +202,19 @@ export async function POST(request: NextRequest) {
         { status: 403 }
       );
     }
+
+    // ── Plan branch-limit guard ────────────────────────────────────────
+    // Hard backend enforcement based on the tenant's subscribed plan.
+    // Single Branch → 1, Multi Branch → 10, Enterprise/custom → unlimited
+    // (max_branches = null). Existing over-limit tenants keep their branches
+    // but cannot create new ones until they are back under the limit.
+    const usage = await getBranchUsage(restaurantId);
+    if (!usage.canCreate) {
+      return NextResponse.json(
+        { error: branchLimitMessage(usage) },
+        { status: 403 }
+      );
+    }
     restaurantSlug = restaurantSlug ?? targetRestaurant.slug;
 
     // `branch_code` is an internal identifier now — it is no longer collected
@@ -199,18 +226,26 @@ export async function POST(request: NextRequest) {
       restaurantId,
     });
 
-    const branch = await prisma.branch.create({
-      data: {
-        branch_name: branch_name.trim(),
-        branch_code: branchCode,
-        restaurant_id: restaurantId,
-        address: address.trim(),
-        city: city.trim(),
-        status: status === "Inactive" ? "Inactive" : "Active",
-      },
-      include: {
-        restaurant: { select: { restaurant_id: true, name: true } },
-      },
+    // Wrap branch creation + default-category seeding in one transaction so
+    // the new branch never lands without its starter categories (or vice
+    // versa). The seeded categories are plain rows — Branch Admin can edit
+    // or permanently delete any of them through the existing Categories UI.
+    const branch = await prisma.$transaction(async (tx) => {
+      const created = await tx.branch.create({
+        data: {
+          branch_name: branch_name.trim(),
+          branch_code: branchCode,
+          restaurant_id: restaurantId,
+          address: address.trim(),
+          city: city.trim(),
+          status: status === "Inactive" ? "Inactive" : "Active",
+        },
+        include: {
+          restaurant: { select: { restaurant_id: true, name: true } },
+        },
+      });
+      await seedDefaultCategoriesForBranch(created.branch_id, tx);
+      return created;
     });
 
     return NextResponse.json(

@@ -119,6 +119,26 @@ const SalesOrderModal: React.FC<SalesOrderModalProps> = ({
     },
   ];
 
+  // Card / Online payments carry a cashier-entered reference; render it
+  // as its own card so the value is easy to spot in audits.
+  const paymentReferenceId = order.paymentReferenceId?.trim() ?? "";
+  if (paymentReferenceId.length > 0) {
+    infoCards.push({
+      icon: <CreditCard size={15} />,
+      label:
+        order.paymentMethod === "Card"
+          ? "Card Invoice ID"
+          : order.paymentMethod === "Online"
+          ? "Online Payment ID"
+          : "Payment Reference",
+      value: (
+        <span className="font-semibold text-gray-800 break-all">
+          {paymentReferenceId}
+        </span>
+      ),
+    });
+  }
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />

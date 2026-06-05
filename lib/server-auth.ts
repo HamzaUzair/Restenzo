@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generateUniqueBranchCode } from "@/lib/branch-code";
+import { seedDefaultCategoriesForBranch } from "@/lib/seedDefaultCategories";
 
 export type ServerAuthRole =
   | "SUPER_ADMIN"
@@ -466,6 +467,10 @@ export async function resolveDefaultBranchForSingleBranch(
       status: "Active",
     },
   });
+  // The hidden Main Branch is brand new — give it the same starter
+  // categories every other newly created branch gets so the Categories
+  // page isn't empty the first time the Restaurant Admin opens it.
+  await seedDefaultCategoriesForBranch(created.branch_id);
   return created.branch_id;
 }
 

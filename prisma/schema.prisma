@@ -151,6 +151,45 @@ model Subscription {
   @@map("subscriptions")
 }
 
+/// Subscription plan catalog — the single source of truth for plan pricing,
+/// features and branch limits shared by the Platform Admin (`/plans`), the
+/// public marketing site (`/pricing`, `/signup`) and Stripe checkout. Seeded
+/// from `lib/pricing.ts` defaults via `prisma/seed-plans.ts`.
+model Plan {
+  id            Int      @id @default(autoincrement())
+  /// Stable machine slug, also stored on `Subscription.plan_id`
+  /// ("single" | "multi" | "enterprise").
+  slug          String   @unique
+  name          String
+  description   String?
+  /// Per-month price billed monthly (USD by default).
+  monthly_price Decimal  @default(0.00) @db.Decimal(10, 2)
+  /// Per-month price when billed annually (the figure shown on cards).
+  yearly_price  Decimal  @default(0.00) @db.Decimal(10, 2)
+  currency      String   @default("USD")
+  /// Suffix shown next to the price, e.g. "/mo".
+  billing_label String?
+  /// Primary call-to-action label, e.g. "Start free trial" / "Talk to sales".
+  cta_label     String?
+  is_active     Boolean  @default(true)
+  is_popular    Boolean  @default(false)
+  /// Contact-sales / custom plan — price hidden and Stripe checkout skipped.
+  is_custom     Boolean  @default(false)
+  /// Maximum branches a tenant on this plan may own. null = unlimited.
+  max_branches  Int?
+  sort_order    Int      @default(0)
+  /// Ordered checklist items rendered on the pricing cards.
+  features      String[] @default([])
+  stripe_monthly_price_id String?
+  stripe_yearly_price_id  String?
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  @@index([is_active])
+  @@index([sort_order])
+  @@map("plans")
+}
+
 model Branch {
   branch_id     Int      @id @default(autoincrement())
   branch_name   String
@@ -328,7 +367,8 @@ model MenuVariation {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  menu MenuItem @relation(fields: [menuId], references: [dish_id], onDelete: Cascade)
+  menu      MenuItem   @relation(fields: [menuId], references: [dish_id], onDelete: Cascade)
+  dealItems DealItem[]
 
   @@unique([menuId, name])
   @@index([menuId])
@@ -361,17 +401,30 @@ model Deal {
 }
 
 /// Items included in a deal (ties to menu items).
+///
+/// A deal line can reference either a plain menu item (`variation_id = null`)
+/// or one specific variation of a menu item (e.g. "Pizza (Large)"). Snapshot
+/// columns freeze the name/price at the time the deal was saved so existing
+/// deals stay stable even if the underlying menu item is later renamed or
+/// repriced.
 model DealItem {
-  id         Int      @id @default(autoincrement())
-  deal_id    Int
-  dish_id    Int
-  quantity   Int      @default(1)
-  created_at DateTime @default(now())
+  id                      Int      @id @default(autoincrement())
+  deal_id                 Int
+  dish_id                 Int
+  variation_id            Int?
+  quantity                Int      @default(1)
+  unit_price_snapshot     Decimal?
+  item_name_snapshot      String?
+  variation_name_snapshot String?
+  created_at              DateTime @default(now())
+  updated_at              DateTime @default(now()) @updatedAt
 
-  deal      Deal     @relation(fields: [deal_id], references: [id])
-  menu_item MenuItem @relation(fields: [dish_id], references: [dish_id])
+  deal      Deal           @relation(fields: [deal_id], references: [id])
+  menu_item MenuItem       @relation(fields: [dish_id], references: [dish_id])
+  variation MenuVariation? @relation(fields: [variation_id], references: [id], onDelete: SetNull)
 
-  @@unique([deal_id, dish_id])
+  @@unique([deal_id, dish_id, variation_id])
+  @@index([variation_id])
 }
 
 /// ── Orders & payments ─────────────────────────────────────────────────────
@@ -454,7 +507,15 @@ model Payment {
   amount        Decimal       @default(0.00)
   method        PaymentMethod
   status        PaymentStatus @default(PAID)
+  /// Internal Bill ID assigned by the system on Served → Paid (format
+  /// `BILL-YYYYMMDD-NNNNNN`). Always present for new cashier payments;
+  /// nullable to keep historic rows valid.
   reference     String?
+  /// Cashier-entered payment reference / invoice / transaction ID for
+  /// Card or Online payments (e.g. POS terminal invoice number, online
+  /// wallet transaction ID). Null for Cash payments and for legacy rows
+  /// captured before this field existed.
+  external_reference String?
   paid_at       DateTime      @default(now())
   created_at    DateTime      @default(now())
   created_by_id Int?

@@ -24,13 +24,9 @@ import {
   Trophy,
   TrendingDown,
   Loader2,
-  Store,
   ShieldCheck,
   AlertTriangle,
   CheckCircle2,
-  GitBranch,
-  Activity,
-  Clock3,
   Calendar,
   Wallet,
   UserRound,
@@ -61,6 +57,20 @@ interface HeadOfficeBranchRow {
   avgOrderValue: number;
 }
 
+/**
+ * Shape used by the dual "Top Selling Items" cards. Both ranked lists
+ * (`topSellingByQuantity` / `topSellingBySales`) carry the full numeric
+ * payload so each card can render its primary metric *and* the secondary
+ * one (e.g. by-quantity card shows units sold + revenue underneath).
+ */
+interface TopSellingApiItem {
+  dish_id: number;
+  name: string;
+  category: string;
+  quantity: number;
+  total: number;
+}
+
 interface HeadOfficeOverview {
   level: "restaurant";
   range: HeadOfficeRange;
@@ -86,13 +96,10 @@ interface HeadOfficeOverview {
   branches: HeadOfficeBranchRow[];
   topBranch: { branch_name: string; sales: number } | null;
   lowestBranch: { branch_name: string; sales: number } | null;
-  topSellingItems?: Array<{
-    dish_id: number;
-    name: string;
-    category: string;
-    quantity: number;
-    total: number;
-  }>;
+  /** Legacy (sales-ranked) list — still emitted for backwards-compat. */
+  topSellingItems?: TopSellingApiItem[];
+  topSellingByQuantity?: TopSellingApiItem[];
+  topSellingBySales?: TopSellingApiItem[];
 }
 
 interface BranchAdminOverview {
@@ -117,13 +124,9 @@ interface BranchAdminOverview {
     activeDeals: number;
     expenses: number;
   };
-  topSellingItems: Array<{
-    dish_id: number;
-    name: string;
-    category: string;
-    quantity: number;
-    total: number;
-  }>;
+  topSellingItems: TopSellingApiItem[];
+  topSellingByQuantity?: TopSellingApiItem[];
+  topSellingBySales?: TopSellingApiItem[];
 }
 
 /* ?? Quick action buttons (no Create Order) ?? */
@@ -273,8 +276,6 @@ export default function DashboardPage() {
       bg: "bg-amber-50",
     },
   ];
-
-  const hasData = (stats?.ordersToday ?? 0) > 0 || (stats?.totalBranches ?? 0) > 0;
 
   const visibleQuickActions =
     sessionRole === "ORDER_TAKER"
@@ -767,6 +768,75 @@ function HeadOfficeDashboard() {
   );
 }
 
+/**
+ * Single ranked "Top Selling Items" card used on both the Branch Admin and
+ * Single-Branch dashboards. Variant controls which metric is the headline
+ * and which one is shown as the muted secondary line beneath it.
+ */
+function TopSellingItemsCard({
+  variant,
+  items,
+}: {
+  variant: "quantity" | "sales";
+  items: TopSellingApiItem[];
+}) {
+  const title =
+    variant === "quantity"
+      ? "Top Selling Items by Quantity"
+      : "Top Selling Items by Sales";
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 h-full flex flex-col">
+      <div className="flex items-center gap-2 mb-4">
+        <UtensilsCrossed size={18} className="text-[#ff5a1f]" />
+        <h3 className="text-sm font-bold text-gray-800">{title}</h3>
+      </div>
+      {items.length === 0 ? (
+        <p className="text-sm text-gray-400">No sales data for this period.</p>
+      ) : (
+        <ul className="divide-y divide-gray-100">
+          {items.map((item, i) => {
+            const qty = Math.round(item.quantity);
+            const primary =
+              variant === "quantity"
+                ? `${qty} sold`
+                : formatPKR(item.total);
+            const secondary =
+              variant === "quantity"
+                ? formatPKR(item.total)
+                : `${qty} sold`;
+            return (
+              <li
+                key={item.dish_id}
+                className="flex items-center justify-between py-2.5"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <span className="w-6 h-6 rounded-full bg-[#ff5a1f]/10 flex items-center justify-center text-xs font-bold text-[#ff5a1f] shrink-0">
+                    {i + 1}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="font-medium text-gray-800 truncate">
+                      {item.name}
+                    </p>
+                    <p className="text-xs text-gray-400 truncate">
+                      {item.category || "—"}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right shrink-0 ml-3">
+                  <p className="text-sm font-semibold text-gray-700">
+                    {primary}
+                  </p>
+                  <p className="text-xs text-gray-400">{secondary}</p>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function HeadOfficeKpiCard({
   label,
   value,
@@ -983,9 +1053,9 @@ function SingleBranchDashboard() {
             />
           </div>
 
-          {/* ?? Section 4: Branch summary + Top selling items ?? */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-2">
-            <div className="lg:col-span-1 bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+          {/* ?? Section 4: Branch summary ?? */}
+          <div className="mb-6">
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
               <div className="flex items-center gap-2 mb-4">
                 <Building2 size={18} className="text-[#ff5a1f]" />
                 <h3 className="text-sm font-bold text-gray-800">
@@ -1017,7 +1087,7 @@ function SingleBranchDashboard() {
                       {data.restaurant.userCount === 1 ? "" : "s"}
                     </span>
                   </div>
-                  <div className="grid grid-cols-2 gap-3 pt-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
                     <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
                       <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
                         Sales
@@ -1056,49 +1126,24 @@ function SingleBranchDashboard() {
                 <p className="text-sm text-gray-400">No branch data.</p>
               )}
             </div>
+          </div>
 
-            <div className="lg:col-span-2 bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-              <div className="flex items-center gap-2 mb-4">
-                <UtensilsCrossed size={18} className="text-[#ff5a1f]" />
-                <h3 className="text-sm font-bold text-gray-800">
-                  Top Selling Items
-                </h3>
-              </div>
-              {!data.topSellingItems || data.topSellingItems.length === 0 ? (
-                <p className="text-sm text-gray-400">No sales data yet.</p>
-              ) : (
-                <ul className="divide-y divide-gray-100">
-                  {data.topSellingItems.map((item, i) => (
-                    <li
-                      key={item.dish_id}
-                      className="flex items-center justify-between py-2.5"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <span className="w-6 h-6 rounded-full bg-[#ff5a1f]/10 flex items-center justify-center text-xs font-bold text-[#ff5a1f] shrink-0">
-                          {i + 1}
-                        </span>
-                        <div className="min-w-0">
-                          <p className="font-medium text-gray-800 truncate">
-                            {item.name}
-                          </p>
-                          <p className="text-xs text-gray-400 truncate">
-                            {item.category}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="text-right shrink-0 ml-3">
-                        <p className="text-sm font-semibold text-gray-700">
-                          {Math.round(item.quantity)} sold
-                        </p>
-                        <p className="text-xs text-gray-400">
-                          {formatPKR(item.total)}
-                        </p>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+          {/* ?? Section 5: Top Selling Items (Quantity / Sales) ??
+           * Two ranked cards side-by-side on lg+ screens, stacked on
+           * narrow ones. Both gracefully fall back to the legacy
+           * `topSellingItems` field if a stale API version omits the
+           * dual lists. */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-2">
+            <TopSellingItemsCard
+              variant="quantity"
+              items={
+                data.topSellingByQuantity ?? data.topSellingItems ?? []
+              }
+            />
+            <TopSellingItemsCard
+              variant="sales"
+              items={data.topSellingBySales ?? data.topSellingItems ?? []}
+            />
           </div>
         </>
       )}
@@ -1358,9 +1403,9 @@ function BranchAdminDashboard() {
            * /orders?status=<status> with the branch scoped server-side. */}
           <BranchOrderStatusOverview range={range} />
 
-          {/* ?? Section 3: Branch summary + Top selling items ?? */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-2">
-            <div className="lg:col-span-1 bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+          {/* ?? Section 3: Branch summary ?? */}
+          <div className="mb-6">
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
               <div className="flex items-center gap-2 mb-4">
                 <Building2 size={18} className="text-[#ff5a1f]" />
                 <h3 className="text-sm font-bold text-gray-800">
@@ -1398,7 +1443,7 @@ function BranchAdminDashboard() {
                     </span>
                   )}
                 </div>
-                <div className="grid grid-cols-2 gap-3 pt-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
                   <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
                     <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
                       Sales
@@ -1434,49 +1479,25 @@ function BranchAdminDashboard() {
                 </div>
               </div>
             </div>
+          </div>
 
-            <div className="lg:col-span-2 bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-              <div className="flex items-center gap-2 mb-4">
-                <UtensilsCrossed size={18} className="text-[#ff5a1f]" />
-                <h3 className="text-sm font-bold text-gray-800">
-                  Top Selling Items
-                </h3>
-              </div>
-              {!data.topSellingItems || data.topSellingItems.length === 0 ? (
-                <p className="text-sm text-gray-400">No sales data yet.</p>
-              ) : (
-                <ul className="divide-y divide-gray-100">
-                  {data.topSellingItems.map((item, i) => (
-                    <li
-                      key={item.dish_id}
-                      className="flex items-center justify-between py-2.5"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <span className="w-6 h-6 rounded-full bg-[#ff5a1f]/10 flex items-center justify-center text-xs font-bold text-[#ff5a1f] shrink-0">
-                          {i + 1}
-                        </span>
-                        <div className="min-w-0">
-                          <p className="font-medium text-gray-800 truncate">
-                            {item.name}
-                          </p>
-                          <p className="text-xs text-gray-400 truncate">
-                            {item.category}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="text-right shrink-0 ml-3">
-                        <p className="text-sm font-semibold text-gray-700">
-                          {Math.round(item.quantity)} sold
-                        </p>
-                        <p className="text-xs text-gray-400">
-                          {formatPKR(item.total)}
-                        </p>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+          {/* ?? Section 4: Top Selling Items (Quantity / Sales) ??
+           * Two ranked cards side-by-side on lg+ screens, stacked on
+           * narrow ones. Both fall back to the legacy `topSellingItems`
+           * field if a stale API version omits the dual lists, so the
+           * branch admin never sees an empty card just because of a
+           * deploy-order race. */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-2">
+            <TopSellingItemsCard
+              variant="quantity"
+              items={
+                data.topSellingByQuantity ?? data.topSellingItems ?? []
+              }
+            />
+            <TopSellingItemsCard
+              variant="sales"
+              items={data.topSellingBySales ?? data.topSellingItems ?? []}
+            />
           </div>
         </>
       )}

@@ -23,7 +23,6 @@ const ACTIVE_ORDER_STATUSES = [
 ] as const;
 
 const TABLE_STATUS_OCCUPIED = "Occupied";
-const TABLE_STATUS_AVAILABLE = "Available";
 
 type CreateOrderItem = {
   menuId?: number | string;
@@ -251,7 +250,11 @@ function serializeOrder(order: {
    * Legacy rows (pre bill-number format) store `ORD-<id>` here; we
    * normalize those to the canonical format at serialize time.
    */
-  payments?: Array<{ reference: string | null; paid_at: Date }>;
+  payments?: Array<{
+    reference: string | null;
+    external_reference: string | null;
+    paid_at: Date;
+  }>;
 }) {
   const itemRows = order.order_items.map((item) => {
     const menuName = item.menu_item.name;
@@ -343,6 +346,15 @@ function serializeOrder(order: {
       order.order_status === "Paid" ||
       order.order_status === "Complete" ||
       order.order_status === "Bill Generated",
+    /**
+     * Cashier-entered Card invoice / Online txn ID captured at the
+     * point of payment. Always null for Cash / unpaid orders so the
+     * UI can hide the row without extra plumbing.
+     */
+    paymentReferenceId:
+      latestPayment?.external_reference && latestPayment.external_reference.trim().length > 0
+        ? latestPayment.external_reference
+        : null,
     notes,
   };
 }
@@ -387,7 +399,11 @@ export async function GET(request: NextRequest) {
           orderBy: { item_id: "asc" },
         },
         payments: {
-          select: { reference: true, paid_at: true },
+          select: {
+            reference: true,
+            external_reference: true,
+            paid_at: true,
+          },
           orderBy: { paid_at: "desc" },
           take: 1,
         },
@@ -520,7 +536,6 @@ export async function POST(request: NextRequest) {
 
     const menuSubtotal = parsedItems.reduce((sum, row) => sum + row.lineTotal, 0);
 
-    const subtotal = menuSubtotal;
     const serviceCharge = 0;
     const discountAmount = 0;
 

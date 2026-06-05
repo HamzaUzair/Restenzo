@@ -82,6 +82,10 @@ function serialize(item: SerializableMenuItem) {
       name: v.name,
       price: Number(v.price),
       sortOrder: v.sortOrder,
+      // Variations have no independent status column — they are live whenever
+      // their parent item is. Exposed so callers (e.g. Deals) get a stable
+      // contract that already accounts for a future per-variation status.
+      status: "active" as const,
     })),
     status: item.status === "ACTIVE" ? "active" : "inactive",
     createdAt: item.created_at.toISOString(),

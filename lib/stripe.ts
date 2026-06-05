@@ -17,7 +17,8 @@
  *   STRIPE_WEBHOOK_SECRET              (webhook signature verification)
  */
 import Stripe from "stripe";
-import { PLANS, type Plan, type BillingCycle } from "@/lib/pricing";
+import { type BillingCycle } from "@/lib/pricing";
+import { getPlanBySlug } from "@/lib/plans";
 
 const SECRET_KEY = process.env.STRIPE_SECRET_KEY;
 /**
@@ -64,78 +65,156 @@ export function stripeEnabled(): boolean {
  * plan+cycle is used, the Product and Price are created in Stripe with
  * deterministic metadata so subsequent calls always find the same ones.
  */
-export async function ensureStripePriceForPlan(
-  planId: Plan["id"],
+/**
+ * Optional fixed price ids supplied through the environment. When set these
+ * take precedence over the on-demand product/price provisioning below, which
+ * is the recommended setup for Stripe test mode where you create the prices
+ * once in the dashboard / CLI and pin their ids:
+ *   STRIPE_SINGLE_BRANCH_PRICE_ID=price_...
+ *   STRIPE_MULTI_BRANCH_PRICE_ID=price_...
+ */
+function envPriceIdForPlan(planSlug: string): string | null {
+  if (planSlug === "single") {
+    return process.env.STRIPE_SINGLE_BRANCH_PRICE_ID?.trim() || null;
+  }
+  if (planSlug === "multi") {
+    return process.env.STRIPE_MULTI_BRANCH_PRICE_ID?.trim() || null;
+  }
+  return null;
+}
+
+/** Per-cycle unit amount (in cents) for a plan, from its stored prices. */
+function unitAmountForCycle(
+  monthlyPrice: number,
+  yearlyPrice: number,
   cycle: BillingCycle
-): Promise<{ plan: Plan; priceId: string; amount: number }> {
-  const plan = PLANS.find((p) => p.id === planId);
-  if (!plan) throw new Error(`Unknown plan id: ${planId}`);
-  if (plan.id === "enterprise") {
-    throw new Error("Enterprise plan is contact-sales only");
+): number {
+  // Yearly is billed for the full year up-front using the per-month yearly
+  // price × 12. Monthly bills the monthly price.
+  return cycle === "yearly"
+    ? Math.round(yearlyPrice * 12 * 100)
+    : Math.round(monthlyPrice * 100);
+}
+
+/**
+ * Creates a brand-new Stripe Price for a plan + cycle at the given unit amount
+ * (cents). Stripe prices are immutable, so callers that change a plan's price
+ * always mint a fresh Price and store its id — old prices keep serving existing
+ * subscriptions. The owning Product is reused/created from the plan slug.
+ */
+export async function createStripePriceForPlan(params: {
+  slug: string;
+  name: string;
+  description?: string | null;
+  cycle: BillingCycle;
+  unitAmount: number;
+}): Promise<string> {
+  const stripe = getStripe();
+  const interval: Stripe.Price.Recurring.Interval =
+    params.cycle === "yearly" ? "year" : "month";
+
+  const existingProducts = await stripe.products.search({
+    query: `metadata['restenzo_plan']:'${params.slug}'`,
+    limit: 1,
+  });
+  let product = existingProducts.data[0];
+  if (!product) {
+    product = await stripe.products.create({
+      name: `Restenzo · ${params.name}`,
+      description: params.description || undefined,
+      metadata: { restenzo_plan: params.slug },
+    });
+  }
+
+  const price = await stripe.prices.create({
+    product: product.id,
+    currency: "usd",
+    unit_amount: params.unitAmount,
+    recurring: { interval },
+    metadata: { restenzo_plan: params.slug, restenzo_cycle: params.cycle },
+  });
+  return price.id;
+}
+
+/**
+ * Resolves the Stripe Price id to use for a plan + cycle, preferring (in order):
+ *   1. the plan's admin-managed stored price id
+ *   2. an env-pinned price id (STRIPE_*_PRICE_ID)
+ *   3. an on-demand price provisioned from the plan's current amounts
+ */
+export async function ensureStripePriceForPlan(
+  planSlug: string,
+  cycle: BillingCycle
+): Promise<{ priceId: string; amount: number }> {
+  const plan = await getPlanBySlug(planSlug);
+  if (!plan) throw new Error(`Unknown plan id: ${planSlug}`);
+  if (plan.isCustom) {
+    throw new Error("Custom / contact-sales plan has no Stripe price");
   }
 
   const stripe = getStripe();
   const interval: Stripe.Price.Recurring.Interval =
     cycle === "yearly" ? "year" : "month";
 
-  // We express the price as cents; for yearly we bill the whole year up-front,
-  // using (yearly per-month price × 12). For monthly we bill `monthly`.
-  const unitAmount =
-    cycle === "yearly" ? plan.yearly * 12 * 100 : plan.monthly * 100;
-
-  // Look up existing Product by deterministic metadata.key.
-  const existingProducts = await stripe.products.search({
-    query: `metadata['restenzo_plan']:'${plan.id}'`,
-    limit: 1,
-  });
-  let product = existingProducts.data[0];
-  if (!product) {
-    product = await stripe.products.create({
-      name: `Restenzo · ${plan.name}`,
-      description: plan.tagline,
-      metadata: {
-        restenzo_plan: plan.id,
-      },
-    });
+  // 1. Admin-managed stored price id wins (Option A / Option B result).
+  const storedPriceId =
+    cycle === "yearly" ? plan.stripeYearlyPriceId : plan.stripeMonthlyPriceId;
+  if (storedPriceId) {
+    try {
+      const stored = await stripe.prices.retrieve(storedPriceId);
+      return { priceId: stored.id, amount: stored.unit_amount ?? 0 };
+    } catch {
+      // Stored id missing/invalid in this Stripe mode — fall through.
+    }
   }
 
-  const priceKey = `${plan.id}_${cycle}`;
+  // 2. Env-pinned price id (test mode best practice).
+  const pinnedPriceId = envPriceIdForPlan(plan.slug);
+  if (pinnedPriceId) {
+    const pinned = await stripe.prices.retrieve(pinnedPriceId);
+    return { priceId: pinned.id, amount: pinned.unit_amount ?? 0 };
+  }
+
+  // 3. Provision from the plan's amounts, reusing a matching price when one
+  //    already exists (keeps signup idempotent without duplicating prices).
+  const unitAmount = unitAmountForCycle(
+    plan.monthlyPrice,
+    plan.yearlyPrice,
+    cycle
+  );
+  const priceKey = `${plan.slug}_${cycle}`;
   const existingPrices = await stripe.prices.search({
     query: `metadata['restenzo_price_key']:'${priceKey}'`,
     limit: 1,
   });
   let price = existingPrices.data[0];
-  if (!price) {
-    price = await stripe.prices.create({
-      product: product.id,
-      currency: "usd",
-      unit_amount: unitAmount,
-      recurring: { interval },
-      metadata: {
-        restenzo_plan: plan.id,
-        restenzo_cycle: cycle,
-        restenzo_price_key: priceKey,
-      },
+  if (!price || price.unit_amount !== unitAmount) {
+    const existingProducts = await stripe.products.search({
+      query: `metadata['restenzo_plan']:'${plan.slug}'`,
+      limit: 1,
     });
-  } else if (price.unit_amount !== unitAmount) {
-    // If the unit amount has changed (e.g. pricing was updated in
-    // `lib/pricing.ts`), create a new price rather than mutating the old
-    // one — Stripe prices are immutable once created.
+    let product = existingProducts.data[0];
+    if (!product) {
+      product = await stripe.products.create({
+        name: `Restenzo · ${plan.name}`,
+        description: plan.description || undefined,
+        metadata: { restenzo_plan: plan.slug },
+      });
+    }
     price = await stripe.prices.create({
       product: product.id,
       currency: "usd",
       unit_amount: unitAmount,
       recurring: { interval },
       metadata: {
-        restenzo_plan: plan.id,
+        restenzo_plan: plan.slug,
         restenzo_cycle: cycle,
         restenzo_price_key: priceKey,
-        superseded_price_id: price.id,
       },
     });
   }
 
-  return { plan, priceId: price.id, amount: unitAmount };
+  return { priceId: price.id, amount: unitAmount };
 }
 
 /**
@@ -261,10 +340,17 @@ export function normalizeSubscriptionStatus(
   }
 }
 
+export type LocalPaymentStatus =
+  | "pending"
+  | "paid"
+  | "failed"
+  | "unpaid"
+  | "n_a";
+
 /** Derives the public payment_status we surface in the admin panel. */
 export function derivePaymentStatus(
   sub: Stripe.Subscription
-): "pending" | "paid" | "failed" | "unpaid" | "n_a" {
+): LocalPaymentStatus {
   if (sub.status === "trialing") return "n_a";
   if (sub.status === "active") return "paid";
   if (sub.status === "past_due" || sub.status === "unpaid") return "failed";
@@ -274,8 +360,127 @@ export function derivePaymentStatus(
   return "n_a";
 }
 
+interface SubscriptionWithPeriods extends Stripe.Subscription {
+  current_period_start?: number | null;
+  current_period_end?: number | null;
+}
+
+/**
+ * Reads the current period window. Newer Stripe API versions expose
+ * `current_period_*` on the subscription item rather than the subscription,
+ * so we check the item first and fall back to the subscription-level fields.
+ */
+export function readSubscriptionPeriods(sub: Stripe.Subscription): {
+  start: number | null;
+  end: number | null;
+} {
+  const item = sub.items?.data?.[0];
+  const s = sub as SubscriptionWithPeriods;
+  return {
+    start: item?.current_period_start ?? s.current_period_start ?? null,
+    end: item?.current_period_end ?? s.current_period_end ?? null,
+  };
+}
+
+const toDate = (epochSeconds: number | null | undefined): Date | null =>
+  epochSeconds ? new Date(epochSeconds * 1000) : null;
+
+/** Local `subscriptions` columns derived from a Stripe.Subscription. */
+export interface LocalSubscriptionFields {
+  status: string;
+  payment_status: LocalPaymentStatus;
+  stripe_subscription_id: string;
+  stripe_customer_id: string | null;
+  stripe_price_id: string | null;
+  trial_start: Date | null;
+  trial_end: Date | null;
+  current_period_start: Date | null;
+  current_period_end: Date | null;
+  cancel_at_period_end: boolean;
+  canceled_at: Date | null;
+}
+
+/**
+ * Single source of truth for translating a Stripe.Subscription into the
+ * columns we persist on `subscriptions`. Reused by the signup flow, the
+ * webhook receiver and the manual sync endpoint so all three stay in lock-step.
+ */
+export function mapStripeSubscriptionToLocal(
+  sub: Stripe.Subscription
+): LocalSubscriptionFields {
+  const periods = readSubscriptionPeriods(sub);
+  return {
+    status: normalizeSubscriptionStatus(sub.status),
+    payment_status: derivePaymentStatus(sub),
+    stripe_subscription_id: sub.id,
+    stripe_customer_id:
+      typeof sub.customer === "string" ? sub.customer : sub.customer?.id ?? null,
+    stripe_price_id: sub.items?.data?.[0]?.price?.id ?? null,
+    trial_start: toDate(sub.trial_start),
+    trial_end: toDate(sub.trial_end),
+    current_period_start: toDate(periods.start),
+    current_period_end: toDate(periods.end),
+    cancel_at_period_end: Boolean(sub.cancel_at_period_end),
+    canceled_at: toDate(sub.canceled_at),
+  };
+}
+
+/** Reads the restaurant id pinned in a subscription's Stripe metadata. */
+export function restaurantIdFromMetadata(
+  metadata: Stripe.Metadata | null | undefined
+): number | null {
+  const raw = metadata?.restenzo_restaurant_id;
+  if (!raw) return null;
+  const id = Number(raw);
+  return Number.isFinite(id) && id > 0 ? id : null;
+}
+
 /** Read-only Stripe instance accessor used by the webhook route. */
 export function getStripeOrNull(): Stripe | null {
   if (!SECRET_KEY) return null;
   return getStripe();
+}
+
+export async function getSubscriptionById(
+  subscriptionId: string
+): Promise<Stripe.Subscription> {
+  const stripe = getStripe();
+  return stripe.subscriptions.retrieve(subscriptionId, {
+    expand: ["pending_setup_intent", "latest_invoice.payment_intent"],
+  });
+}
+
+export async function createSetupIntentForCustomer(params: {
+  customerId: string;
+  restaurantId: number;
+  planId: string;
+  billingCycle: BillingCycle;
+}): Promise<string | null> {
+  const stripe = getStripe();
+  const setupIntent = await stripe.setupIntents.create({
+    customer: params.customerId,
+    usage: "off_session",
+    payment_method_types: ["card"],
+    metadata: {
+      restenzo_restaurant_id: String(params.restaurantId),
+      restenzo_plan: params.planId,
+      restenzo_cycle: params.billingCycle,
+      restenzo_resume_flow: "true",
+    },
+  });
+  return setupIntent.client_secret ?? null;
+}
+
+export async function getSetupIntentByClientSecret(
+  clientSecret: string
+): Promise<Stripe.SetupIntent> {
+  const setupIntentId = clientSecret.split("_secret_")[0];
+  if (!setupIntentId.startsWith("seti_")) {
+    throw new Error("Invalid setup intent client secret");
+  }
+  const stripe = getStripe();
+  return stripe.setupIntents.retrieve(setupIntentId, {
+    client_secret: clientSecret,
+    expand: ["payment_method"],
+  });
 }

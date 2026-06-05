@@ -11,7 +11,9 @@ import {
   TRIAL_DAYS,
   addDays,
   type DerivedSubscription,
+  type PlanPricing,
 } from "@/lib/platform";
+import { getPlans } from "@/lib/plans";
 import { subMonths, startOfMonth, endOfMonth, format } from "date-fns";
 
 /**
@@ -29,7 +31,7 @@ export async function GET(request: NextRequest) {
     const auth = await requireAuth(request);
     requireSuperAdmin(auth);
 
-    const [restaurants, branches, allUsers] = await Promise.all([
+    const [restaurants, branches, allUsers, planRecords] = await Promise.all([
       prisma.restaurant.findMany({
         orderBy: { created_at: "desc" },
         include: {
@@ -82,13 +84,22 @@ export async function GET(request: NextRequest) {
         },
         orderBy: { created_at: "desc" },
       }),
+      getPlans(),
     ]);
+
+    const planPricing: PlanPricing[] = planRecords.map((p) => ({
+      slug: p.slug,
+      name: p.name,
+      monthlyPrice: p.monthlyPrice,
+      yearlyPrice: p.yearlyPrice,
+    }));
 
     const now = new Date();
 
     /* ── Subscriptions (real row when Stripe has provisioned, derived fallback otherwise) ── */
     const subscriptions: DerivedSubscription[] = restaurants.map((r) =>
-      deriveSubscription({
+      deriveSubscription(
+        {
         restaurant_id: r.restaurant_id,
         name: r.name,
         slug: r.slug,
@@ -115,7 +126,9 @@ export async function GET(request: NextRequest) {
               canceled_at: r.subscription.canceled_at,
             }
           : null,
-      })
+        },
+        planPricing
+      )
     );
     const billing = summarizeBilling(subscriptions);
 

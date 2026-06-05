@@ -9,6 +9,13 @@ import CreateBranchModal from "@/components/branches/CreateBranchModal";
 import type { Branch, BranchFormData, ApiError } from "@/types/branch";
 import { apiFetch, getAuthSession } from "@/lib/auth-client";
 
+interface BranchUsageInfo {
+  used: number;
+  max: number | null;
+  planName: string;
+  canCreate: boolean;
+}
+
 export default function BranchesPage() {
   const router = useRouter();
   const [authorized, setAuthorized] = useState(false);
@@ -19,6 +26,7 @@ export default function BranchesPage() {
   const [fetchError, setFetchError] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
+  const [usage, setUsage] = useState<BranchUsageInfo | null>(null);
 
   // ── Auth guard ──
   useEffect(() => {
@@ -45,9 +53,24 @@ export default function BranchesPage() {
     }
   }, []);
 
+  // ── Fetch plan branch usage / limit ──
+  const fetchUsage = useCallback(async () => {
+    try {
+      const res = await apiFetch("/api/branches/usage");
+      if (!res.ok) return;
+      const data: BranchUsageInfo = await res.json();
+      setUsage(data);
+    } catch {
+      // non-blocking; the counter just won't render
+    }
+  }, []);
+
   useEffect(() => {
-    if (authorized) fetchBranches();
-  }, [authorized, fetchBranches]);
+    if (authorized) {
+      fetchBranches();
+      fetchUsage();
+    }
+  }, [authorized, fetchBranches, fetchUsage]);
 
   // ── Smooth scroll to hash anchor after branches load ──
   useEffect(() => {
@@ -105,6 +128,7 @@ export default function BranchesPage() {
       }
       const created: Branch = await res.json();
       setBranches((prev) => [created, ...prev]);
+      fetchUsage();
     }
     closeModal();
   };
@@ -125,6 +149,7 @@ export default function BranchesPage() {
         return;
       }
       setBranches((prev) => prev.filter((b) => b.branch_id !== branch.branch_id));
+      fetchUsage();
     } catch {
       alert("Network error. Could not delete branch.");
     }
@@ -150,15 +175,36 @@ export default function BranchesPage() {
             <p className="text-sm text-gray-500 mt-1">
               Create, update, and manage restaurant branches
             </p>
+            {usage && usage.max !== null && (
+              <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600">
+                Branches: {usage.used} / {usage.max} used
+                {!usage.canCreate && (
+                  <span className="text-[#ff5a1f]">· limit reached</span>
+                )}
+              </p>
+            )}
           </div>
-          
-          <button
-            onClick={openCreate}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[#ff5a1f] text-white text-sm font-semibold hover:bg-[#e04e18] transition-colors cursor-pointer shadow-sm shrink-0"
-          >
-            <PlusCircle size={18} />
-            Add Branch
-          </button>
+
+          <div className="flex flex-col items-stretch sm:items-end gap-1.5 shrink-0">
+            <button
+              onClick={openCreate}
+              disabled={usage ? !usage.canCreate : false}
+              title={
+                usage && !usage.canCreate
+                  ? `Your ${usage.planName} plan includes up to ${usage.max} branches. Upgrade to add more.`
+                  : undefined
+              }
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[#ff5a1f] text-white text-sm font-semibold hover:bg-[#e04e18] transition-colors cursor-pointer shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <PlusCircle size={18} />
+              Add Branch
+            </button>
+            {usage && !usage.canCreate && (
+              <p className="max-w-[16rem] text-right text-[11px] text-gray-500">
+                Upgrade your plan to add more branches.
+              </p>
+            )}
+          </div>
         </div>
       </div>
 

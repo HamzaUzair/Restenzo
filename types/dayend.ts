@@ -43,7 +43,15 @@ export interface ExpenseEntry {
 }
 
 export interface TopSellingItem {
+  /**
+   * Stable identifier when available — prefer this as a React `key` over
+   * `name` so two items that happen to share a display name (e.g. two
+   * branches' "Pizza" merged into the same list) don't collide.
+   */
+  dish_id?: number;
   name: string;
+  /** Category display name. "—" when the item has no resolvable category. */
+  category?: string;
   quantity: number;
   revenue: number;
 }
@@ -76,6 +84,15 @@ export interface DayEndResponse {
   stats: DayEndStats;
   payments: PaymentBreakdown[];
   expenses: ExpenseEntry[];
+  /**
+   * Legacy top-selling list ordered by revenue — kept so the CSV export
+   * and any older consumer keeps rendering. New UI reads the dual
+   * `topItemsByQuantity` / `topItemsBySales` fields below.
+   */
   topItems: TopSellingItem[];
+  /** Items ordered by units sold (DESC) for the selected business day. */
+  topItemsByQuantity: TopSellingItem[];
+  /** Items ordered by revenue (DESC) for the selected business day. */
+  topItemsBySales: TopSellingItem[];
   hourlySales: HourlySales[];
 }

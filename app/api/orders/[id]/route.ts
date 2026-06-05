@@ -25,6 +25,20 @@ const ALLOWED_CASHIER_PAYMENT_METHODS = new Set([
   "Easypaisa",
   "JazzCash",
 ]);
+/**
+ * Payment methods that require a cashier-entered reference / invoice ID
+ * (POS terminal invoice number, online wallet transaction ID, etc.).
+ * Compared case-insensitively so that "card" / "Card" / "CARD" all
+ * trigger the same gate, mirroring the modal-side normalisation.
+ */
+const PAYMENT_METHODS_REQUIRING_REFERENCE = new Set([
+  "card",
+  "online",
+  "bank transfer",
+  "easypaisa",
+  "jazzcash",
+]);
+const MAX_PAYMENT_REFERENCE_LENGTH = 100;
 const ALLOWED_DISCOUNT_TYPES = new Set(["Fixed Amount", "Percentage"]);
 const DISCOUNT_META_TAG = "[DISCOUNT_META]";
 const BILLING_META_TAG = "[BILLING_META]";
@@ -60,6 +74,11 @@ export async function PATCH(
     const discountValueRaw = Number(body?.discountValue ?? 0);
     const discountReason = String(body?.discountReason ?? "").trim();
     const gstPercentRaw = Number(body?.gstPercent ?? DEFAULT_GST_PERCENT);
+    // Cashier-entered payment reference (Card invoice / Online txn ID).
+    // Trimmed once here so every downstream check / write sees the
+    // canonical value. Stays "" when omitted so the Cash branch still
+    // works without sending the field at all.
+    const paymentReferenceIdRaw = String(body?.paymentReferenceId ?? "").trim();
 
     const existing = await prisma.order.findUnique({
       where: { order_id: orderId },
@@ -147,6 +166,28 @@ export async function PATCH(
           { error: "Select a valid payment method" },
           { status: 400 }
         );
+      }
+
+      if (
+        PAYMENT_METHODS_REQUIRING_REFERENCE.has(paymentMethod.toLowerCase())
+      ) {
+        if (!paymentReferenceIdRaw) {
+          const label = paymentMethod.toLowerCase() === "card" ? "card" : "online";
+          return NextResponse.json(
+            {
+              error: `Payment reference ID is required for ${label} payments.`,
+            },
+            { status: 400 }
+          );
+        }
+        if (paymentReferenceIdRaw.length > MAX_PAYMENT_REFERENCE_LENGTH) {
+          return NextResponse.json(
+            {
+              error: `Payment reference ID must be ${MAX_PAYMENT_REFERENCE_LENGTH} characters or fewer.`,
+            },
+            { status: 400 }
+          );
+        }
       }
 
       if (!Number.isFinite(discountValueRaw) || discountValueRaw < 0) {
@@ -294,6 +335,16 @@ export async function PATCH(
       ? formatBillNo(updated.order_id, nowDate)
       : null;
 
+    // Persist the cashier-entered Card invoice / Online txn ID alongside
+    // the Bill ID. Cash payments don't require this so we explicitly
+    // store NULL to keep the audit trail clean.
+    const externalReference =
+      isCashierTransition &&
+      PAYMENT_METHODS_REQUIRING_REFERENCE.has(paymentMethod.toLowerCase()) &&
+      paymentReferenceIdRaw
+        ? paymentReferenceIdRaw
+        : null;
+
     if (isCashierTransition) {
       await prisma.payment.create({
         data: {
@@ -316,6 +367,7 @@ export async function PATCH(
           // The bill number IS the payment reference — human-readable,
           // unique, and surfaced on every receipt / audit page.
           reference: billNo,
+          external_reference: externalReference,
           paid_at: nowDate,
           created_by_id: auth.id,
         },
@@ -365,6 +417,9 @@ export async function PATCH(
       // Real, saved Bill ID for the Paid Receipt modal. `null` for
       // non-cashier (kitchen) transitions where no payment row exists.
       billNo,
+      // Cashier-entered Card / Online reference; `null` for Cash and for
+      // kitchen transitions.
+      paymentReferenceId: externalReference,
     });
   } catch (err) {
     if (err instanceof AuthError) {

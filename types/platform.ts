@@ -1,5 +1,4 @@
 import type { DerivedSubscription, PlatformBillingSummary } from "@/lib/platform";
-import type { Plan } from "@/lib/pricing";
 
 export interface PlatformOverviewPayload {
   platformOverview: {
@@ -56,7 +55,7 @@ export interface PlatformTenantRow {
   setupComplete: boolean;
   setupIssues: string[];
   subscription: {
-    planId: Plan["id"];
+    planId: string;
     planName: string;
     billingCycle: "monthly" | "yearly";
     status: DerivedSubscription["status"];

@@ -5,10 +5,13 @@ import {
   AuthError,
   assertBranchAccess,
   assertBranchWriteAccess,
-  buildBranchScopeFilter,
   requireAuth,
   type ServerAuthUser,
 } from "@/lib/server-auth";
+import {
+  getTopSellingItems,
+  type TopSellingItemRow,
+} from "@/lib/topSellingItems";
 import type {
   DayEndResponse,
   DayEndStats,
@@ -161,7 +164,7 @@ export async function GET(request: NextRequest) {
 
     await assertBranchAccess(auth, branch.branch_id);
 
-    const [orders, expenses, topItemRows, closedRecord] = await Promise.all([
+    const [orders, expenses, topSellingLists, closedRecord] = await Promise.all([
       prisma.order.findMany({
         where: {
           branch_id: branch.branch_id,
@@ -194,19 +197,16 @@ export async function GET(request: NextRequest) {
         },
         orderBy: { expense_date: "asc" },
       }),
-      prisma.orderItem.groupBy({
-        by: ["dish_id"],
-        where: {
-          branch_id: branch.branch_id,
-          order: {
-            branch_id: branch.branch_id,
-            order_status: { in: BOOKED_SALES_STATUSES },
-            created_at: { gte: dateRange.start, lte: dateRange.end },
-          },
-        },
-        _sum: { quantity: true, total_amount: true },
-        orderBy: { _sum: { total_amount: "desc" } },
-        take: 10,
+      // Pull both rankings (by-quantity + by-sales) for this branch+day in one
+      // helper call. The helper restricts to "booked sales" statuses so it
+      // matches the rest of the day-end snapshot (paid / credit / complete /
+      // bill generated) and excludes cancelled / removed orders.
+      getTopSellingItems({
+        branchId: branch.branch_id,
+        startDate: dateRange.start,
+        endDate: dateRange.end,
+        orderStatuses: BOOKED_SALES_STATUSES,
+        limit: 10,
       }),
       prisma.dayEnd.findUnique({
         where: {
@@ -220,16 +220,6 @@ export async function GET(request: NextRequest) {
         },
       }),
     ]);
-
-    // Dish names in one shot.
-    const dishIds = topItemRows.map((r) => r.dish_id);
-    const dishes = dishIds.length
-      ? await prisma.menuItem.findMany({
-          where: { dish_id: { in: dishIds } },
-          select: { dish_id: true, name: true },
-        })
-      : [];
-    const dishMap = new Map(dishes.map((d) => [d.dish_id, d.name] as const));
 
     const booked = orders.filter((o) => BOOKED_SALES_STATUSES.includes(o.order_status));
     const cancelled = orders.filter((o) => CANCELLED_STATUSES.includes(o.order_status));
@@ -300,12 +290,21 @@ export async function GET(request: NextRequest) {
     }
     const trimmedHourly = hourlySales.slice(startIdx, endIdx + 1);
 
-    // Top selling items.
-    const topItems: TopSellingItem[] = topItemRows.map((r) => ({
-      name: dishMap.get(r.dish_id) ?? `Item #${r.dish_id}`,
-      quantity: Number(r._sum.quantity ?? 0),
-      revenue: Number(r._sum.total_amount ?? 0),
-    }));
+    // Top selling items — the helper already returns two rankings sorted
+    // and limited to `take`. We project both into the day-end-friendly
+    // `TopSellingItem` shape and keep the legacy `topItems` field aligned
+    // with the by-sales list so the CSV export and any older consumer
+    // continue to work unchanged.
+    const toTopSellingItem = (r: TopSellingItemRow): TopSellingItem => ({
+      dish_id: r.dish_id,
+      name: r.itemName,
+      category: r.categoryName,
+      quantity: r.totalQuantitySold,
+      revenue: r.totalSalesAmount,
+    });
+    const topItemsByQuantity = topSellingLists.byQuantity.map(toTopSellingItem);
+    const topItemsBySales = topSellingLists.bySales.map(toTopSellingItem);
+    const topItems = topItemsBySales;
 
     // Summary (Day Status).
     const firstOrder = orders[0];
@@ -368,6 +367,8 @@ export async function GET(request: NextRequest) {
       payments,
       expenses: expenseEntries,
       topItems,
+      topItemsByQuantity,
+      topItemsBySales,
       hourlySales: trimmedHourly,
     };
 

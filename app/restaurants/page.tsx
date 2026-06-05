@@ -3,13 +3,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  PlusCircle,
   Store,
   Search,
   Loader2,
   RefreshCw,
   Building2,
-  Clock3,
   CheckCircle2,
   CircleSlash,
 } from "lucide-react";
@@ -106,7 +104,7 @@ export default function RestaurantsPage() {
     }
   }, []);
 
-  const tenants: PlatformTenantRow[] = data?.tenants ?? [];
+  const tenants: PlatformTenantRow[] = useMemo(() => data?.tenants ?? [], [data]);
 
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -123,12 +121,6 @@ export default function RestaurantsPage() {
   }, [tenants, search, statusFilter, typeFilter]);
 
   const overview = data?.platformOverview;
-
-  const openCreate = () => {
-    setEditing(null);
-    setEditingAdmin(null);
-    setModalOpen(true);
-  };
 
   const openEditById = useCallback(async (restaurantId: number) => {
     setLoadingEdit(true);
@@ -163,29 +155,15 @@ export default function RestaurantsPage() {
   };
 
   const handleSubmit = async (formData: RestaurantFormData) => {
-    if (editing) {
-      const res = await apiFetch(
-        `/api/restaurants/${editing.restaurant_id}`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(formData),
-        }
-      );
-      if (!res.ok) {
-        const body: ApiError = await res.json();
-        throw new Error(body.error || "Failed to update restaurant");
-      }
-    } else {
-      const res = await apiFetch("/api/restaurants", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
-      });
-      if (!res.ok) {
-        const body: ApiError = await res.json();
-        throw new Error(body.error || "Failed to create restaurant");
-      }
+    if (!editing) return;
+    const res = await apiFetch(`/api/restaurants/${editing.restaurant_id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(formData),
+    });
+    if (!res.ok) {
+      const body: ApiError = await res.json();
+      throw new Error(body.error || "Failed to update restaurant");
     }
     closeModal();
     await refresh();
@@ -285,27 +263,18 @@ export default function RestaurantsPage() {
             Tenant management
           </h2>
           <p className="mt-1 text-sm text-gray-500">
-            Onboard restaurants, manage owners, control subscription status and
-            setup health across the Restenzo platform.
+            Manage tenants, owners, and subscription status across the Restenzo
+            platform.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={refresh}
-            disabled={loading}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
-          >
-            <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
-            Refresh
-          </button>
-          <button
-            onClick={openCreate}
-            className="inline-flex items-center gap-2 rounded-lg bg-[#ff5a1f] px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#e04e18]"
-          >
-            <PlusCircle size={16} />
-            Add restaurant
-          </button>
-        </div>
+        <button
+          onClick={refresh}
+          disabled={loading}
+          className="inline-flex shrink-0 items-center gap-2 self-start rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50 sm:self-center"
+        >
+          <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
+          Refresh
+        </button>
       </div>
 
       {/* KPIs */}
@@ -331,11 +300,11 @@ export default function RestaurantsPage() {
           hint={`${overview?.inactiveRestaurants ?? 0} inactive`}
         />
         <StatCard
-          label="Setup Issues"
-          value={(overview?.pendingSetup ?? 0).toLocaleString()}
-          icon={<Clock3 size={18} />}
-          tint="text-amber-700 bg-amber-100"
-          href="/setup-health"
+          label="Branches"
+          value={(overview?.totalBranches ?? 0).toLocaleString()}
+          icon={<Building2 size={18} />}
+          tint="text-slate-700 bg-slate-100"
+          hint="Across all tenants"
         />
       </div>
 
@@ -405,7 +374,7 @@ export default function RestaurantsPage() {
             </div>
             <p className="max-w-xs text-sm text-gray-500">
               {tenants.length === 0
-                ? "No tenants yet. Click Add Restaurant to onboard one."
+                ? "No tenants yet. New restaurants are created through the commercial onboarding flow."
                 : "No tenants match the current filters."}
             </p>
           </div>
@@ -421,7 +390,6 @@ export default function RestaurantsPage() {
                   <th className="px-5 py-3 text-left font-semibold">Plan</th>
                   <th className="px-5 py-3 text-left font-semibold">Billing</th>
                   <th className="px-5 py-3 text-left font-semibold">Branches</th>
-                  <th className="px-5 py-3 text-left font-semibold">Setup</th>
                   <th className="px-5 py-3 text-left font-semibold">Created</th>
                   <th className="px-5 py-3 text-right font-semibold">Actions</th>
                 </tr>
@@ -482,18 +450,6 @@ export default function RestaurantsPage() {
                       </p>
                     </td>
                     <td className="px-5 py-4 text-gray-700">{t.branchCount}</td>
-                    <td className="px-5 py-4">
-                      {t.setupComplete ? (
-                        <StatusBadge label="Healthy" tone="success" />
-                      ) : (
-                        <StatusBadge
-                          label={`${t.setupIssues.length} issue${
-                            t.setupIssues.length === 1 ? "" : "s"
-                          }`}
-                          tone="warning"
-                        />
-                      )}
-                    </td>
                     <td className="px-5 py-4 text-xs text-gray-500">
                       {new Date(t.createdAt).toLocaleDateString()}
                     </td>

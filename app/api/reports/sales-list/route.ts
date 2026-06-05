@@ -105,7 +105,11 @@ export async function GET(request: NextRequest) {
           orderBy: { item_id: "asc" },
         },
         payments: {
-          select: { reference: true, paid_at: true },
+          select: {
+            reference: true,
+            external_reference: true,
+            paid_at: true,
+          },
           orderBy: { paid_at: "desc" },
           take: 1,
         },
@@ -145,6 +149,12 @@ export async function GET(request: NextRequest) {
         status,
         paymentMethod: normalizePaymentMode(order.payment_mode),
         paid,
+        // Cashier-entered Card / Online reference; null for Cash and
+        // for legacy paid rows captured before this column existed.
+        paymentReferenceId:
+          latestPayment?.external_reference && latestPayment.external_reference.trim().length > 0
+            ? latestPayment.external_reference
+            : null,
         createdAt: order.created_at.getTime(),
         items: order.order_items.map((item) => ({
           id: String(item.item_id),

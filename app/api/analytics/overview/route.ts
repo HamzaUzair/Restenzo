@@ -7,6 +7,10 @@ import {
   assertRestaurantAccess,
   requireAuth,
 } from "@/lib/server-auth";
+import {
+  getTopSellingItems,
+  type TopSellingItemRow,
+} from "@/lib/topSellingItems";
 
 /**
  * SaaS drilldown analytics endpoint.
@@ -58,6 +62,38 @@ function toNumber(v: Prisma.Decimal | number | null | undefined): number {
   if (v === null || v === undefined) return 0;
   if (typeof v === "number") return v;
   return Number(v.toString());
+}
+
+/**
+ * Map the rich helper row to the legacy compact shape that the existing
+ * super-admin views (`/analytics`, branch detail page) read from the
+ * `topSellingItems` field. Keeping this shim in one place means the API's
+ * outward contract for that field never changes.
+ */
+function toLegacyTopSellingShape(row: TopSellingItemRow) {
+  return {
+    dish_id: row.dish_id,
+    name: row.itemName,
+    category: row.categoryName,
+    quantity: row.totalQuantitySold,
+    total: row.totalSalesAmount,
+  };
+}
+
+/**
+ * Shape used by the new dual top-selling fields (`topSellingByQuantity`
+ * and `topSellingBySales`). Keeps every numeric field both clients need
+ * (units sold + revenue) so each ranked card can show its primary metric
+ * plus a secondary line — without a second API round-trip.
+ */
+function toApiTopSellingShape(row: TopSellingItemRow) {
+  return {
+    dish_id: row.dish_id,
+    name: row.itemName,
+    category: row.categoryName,
+    quantity: row.totalQuantitySold,
+    total: row.totalSalesAmount,
+  };
 }
 
 export async function GET(request: NextRequest) {
@@ -280,52 +316,26 @@ export async function GET(request: NextRequest) {
 
       // Single-branch tenants get a top-selling-items list so the dashboard
       // can show real menu performance without a multi-branch comparison.
-      let topSellingItems: Array<{
-        dish_id: number;
-        name: string;
-        category: string;
-        quantity: number;
-        total: number;
-      }> = [];
+      // The helper returns two parallel rankings (by units sold and by
+      // revenue); we keep the legacy `topSellingItems` field populated with
+      // the by-sales list so older Super-Admin views (`/analytics`,
+      // `/restaurants/[id]/branches/[branchId]`) continue to render.
+      let topSellingByQuantity: TopSellingItemRow[] = [];
+      let topSellingBySales: TopSellingItemRow[] = [];
       const isSingleBranchTenant =
         restaurant.has_multiple_branches === false ||
         restaurant._count.branches <= 1;
       if (isSingleBranchTenant) {
-        const topItems = await prisma.orderItem.groupBy({
-          by: ["dish_id"],
-          where: {
-            order: {
-              restaurant_id: scopedRestaurantId,
-              created_at: { gte: from, lte: to },
-            },
-          },
-          _sum: { quantity: true, total_amount: true },
-          orderBy: { _sum: { total_amount: "desc" } },
-          take: 5,
+        const lists = await getTopSellingItems({
+          restaurantId: scopedRestaurantId,
+          startDate: from,
+          endDate: to,
+          limit: 5,
         });
-        const dishIds = topItems.map((t) => t.dish_id);
-        const dishes = dishIds.length
-          ? await prisma.menuItem.findMany({
-              where: { dish_id: { in: dishIds } },
-              select: {
-                dish_id: true,
-                name: true,
-                category: { select: { name: true } },
-              },
-            })
-          : [];
-        const dishMap = new Map(dishes.map((d) => [d.dish_id, d]));
-        topSellingItems = topItems.map((t) => {
-          const d = dishMap.get(t.dish_id);
-          return {
-            dish_id: t.dish_id,
-            name: d?.name ?? `Item #${t.dish_id}`,
-            category: d?.category?.name ?? "—",
-            quantity: toNumber(t._sum.quantity),
-            total: toNumber(t._sum.total_amount),
-          };
-        });
+        topSellingByQuantity = lists.byQuantity;
+        topSellingBySales = lists.bySales;
       }
+      const topSellingItems = topSellingBySales.map(toLegacyTopSellingShape);
 
       return NextResponse.json({
         level,
@@ -355,6 +365,8 @@ export async function GET(request: NextRequest) {
         topBranch,
         lowestBranch,
         topSellingItems,
+        topSellingByQuantity: topSellingByQuantity.map(toApiTopSellingShape),
+        topSellingBySales: topSellingBySales.map(toApiTopSellingShape),
       });
     }
 
@@ -373,7 +385,7 @@ export async function GET(request: NextRequest) {
     });
     if (!branch) throw new AuthError("Branch not found", 404);
 
-    const [activeMenuCount, activeDealCount, expensesAgg, topItems] =
+    const [activeMenuCount, activeDealCount, expensesAgg, topSellingLists] =
       await Promise.all([
         prisma.menuItem.count({
           where: { branch_id: scopedBranchId, status: "ACTIVE" },
@@ -388,36 +400,20 @@ export async function GET(request: NextRequest) {
           },
           _sum: { amount: true },
         }),
-        prisma.orderItem.groupBy({
-          by: ["dish_id"],
-          where: {
-            branch_id: scopedBranchId,
-            order: { created_at: { gte: from, lte: to } },
-          },
-          _sum: { quantity: true, total_amount: true },
-          orderBy: { _sum: { total_amount: "desc" } },
-          take: 5,
+        getTopSellingItems({
+          branchId: scopedBranchId,
+          startDate: from,
+          endDate: to,
+          limit: 5,
         }),
       ]);
 
-    const dishIds = topItems.map((t) => t.dish_id);
-    const dishes = dishIds.length
-      ? await prisma.menuItem.findMany({
-          where: { dish_id: { in: dishIds } },
-          select: { dish_id: true, name: true, category: { select: { name: true } } },
-        })
-      : [];
-    const dishMap = new Map(dishes.map((d) => [d.dish_id, d]));
-    const topSellingItems = topItems.map((t) => {
-      const d = dishMap.get(t.dish_id);
-      return {
-        dish_id: t.dish_id,
-        name: d?.name ?? `Item #${t.dish_id}`,
-        category: d?.category?.name ?? "—",
-        quantity: toNumber(t._sum.quantity),
-        total: toNumber(t._sum.total_amount),
-      };
-    });
+    // Legacy `topSellingItems` mirrors the by-sales ranking so older
+    // Super-Admin views (`/analytics`, `/restaurants/[id]/branches/[branchId]`)
+    // — which still read this field — keep showing the same ordering they
+    // always did. New Branch-Admin / Single-Branch dashboards consume the
+    // dedicated `topSellingByQuantity` / `topSellingBySales` arrays below.
+    const topSellingItems = topSellingLists.bySales.map(toLegacyTopSellingShape);
 
     return NextResponse.json({
       level,
@@ -438,6 +434,8 @@ export async function GET(request: NextRequest) {
         expenses: toNumber(expensesAgg._sum.amount),
       },
       topSellingItems,
+      topSellingByQuantity: topSellingLists.byQuantity.map(toApiTopSellingShape),
+      topSellingBySales: topSellingLists.bySales.map(toApiTopSellingShape),
     });
   } catch (err) {
     if (err instanceof AuthError) {

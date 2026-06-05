@@ -41,13 +41,12 @@ export default function SupportPage() {
     if (id) setHighlightId(Number(id));
   }, []);
 
-  const tenants = data?.tenants ?? [];
+  const tenants = useMemo(() => data?.tenants ?? [], [data]);
 
   const attention = useMemo(() => {
     return tenants.filter(
       (t) =>
         t.status !== "Active" ||
-        !t.setupComplete ||
         t.subscription.status === "Past Due" ||
         t.subscription.status === "Trial"
     );
@@ -65,7 +64,6 @@ export default function SupportPage() {
 
   const inactive = tenants.filter((t) => t.status === "Inactive").length;
   const suspended = tenants.filter((t) => t.status === "Suspended").length;
-  const pending = tenants.filter((t) => !t.setupComplete).length;
   const expiring = tenants.filter(
     (t) => t.subscription.status === "Trial"
   ).length;
@@ -135,7 +133,7 @@ export default function SupportPage() {
           value={expiring.toLocaleString()}
           icon={<AlertTriangle size={18} />}
           tint="text-amber-700 bg-amber-100"
-          hint={`${pending} incomplete setup`}
+          hint="Trial accounts"
         />
       </div>
 
@@ -262,20 +260,6 @@ function SupportCard({
           <dd className="mt-0.5 text-gray-800">{tenant.branchCount}</dd>
         </div>
       </dl>
-
-      {tenant.setupIssues.length > 0 && (
-        <div className="mt-3 space-y-1">
-          {tenant.setupIssues.map((issue) => (
-            <div
-              key={issue}
-              className="flex items-center gap-1 text-xs text-amber-700"
-            >
-              <AlertTriangle size={12} />
-              <span>{issue}</span>
-            </div>
-          ))}
-        </div>
-      )}
 
       <div className="mt-4 flex flex-wrap gap-2">
         {tenant.status !== "Active" && (

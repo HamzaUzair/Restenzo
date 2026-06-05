@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { AuthError, requireAuth, requireSuperAdmin } from "@/lib/server-auth";
+import { seedDefaultCategoriesForBranch } from "@/lib/seedDefaultCategories";
 
 function slugify(input: string) {
   return String(input)
@@ -258,7 +259,7 @@ export async function PUT(
           branchCode = `${desiredCode}-${i}`;
           i += 1;
         }
-        await tx.branch.create({
+        const mainBranch = await tx.branch.create({
           data: {
             branch_name: "Main Branch",
             branch_code: branchCode,
@@ -268,6 +269,7 @@ export async function PUT(
             status: "Active",
           },
         });
+        await seedDefaultCategoriesForBranch(mainBranch.branch_id, tx);
       }
 
       if (hasAnyAdminField) {

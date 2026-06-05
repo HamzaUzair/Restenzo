@@ -5,23 +5,65 @@ import {
   AuthError,
   requireAuth,
 } from "@/lib/server-auth";
+import {
+  buildDealItemData,
+  dealLineDisplayName,
+  normalizeDealLines,
+  type IncomingDealLine,
+} from "@/lib/deal-line";
+import type { Prisma } from "@prisma/client";
 
-type IncomingDealItem = {
-  id?: string;
-  name?: string;
-  quantity?: number;
-};
+type DealWithItems = Prisma.DealGetPayload<{
+  include: {
+    branch: { select: { branch_id: true; branch_name: true } };
+    items: {
+      include: {
+        menu_item: { select: { dish_id: true; name: true } };
+        variation: { select: { id: true; name: true } };
+      };
+    };
+  };
+}>;
 
-async function getDishForMenu(branchId: number, menuId: number) {
-  const item = await prisma.menuItem.findFirst({
-    where: {
-      dish_id: menuId,
-      branch_id: branchId,
-      status: "ACTIVE",
+const dealItemInclude = {
+  branch: { select: { branch_id: true, branch_name: true } },
+  items: {
+    include: {
+      menu_item: { select: { dish_id: true, name: true } },
+      variation: { select: { id: true, name: true } },
     },
-    select: { dish_id: true, name: true },
-  });
-  return item;
+  },
+} as const;
+
+function serializeDeal(d: DealWithItems) {
+  return {
+    id: String(d.id),
+    name: d.name,
+    type: d.discount_type,
+    description: d.description,
+    branchId: d.branch_id ?? 0,
+    branchName: d.branch?.branch_name ?? "All Branches",
+    price: Number(d.discount_value),
+    status: d.status === "Active" ? "active" : "inactive",
+    items: d.items.map((item) => {
+      const itemName = item.item_name_snapshot ?? item.menu_item.name;
+      const variationName =
+        item.variation_name_snapshot ?? item.variation?.name ?? null;
+      return {
+        lineId: String(item.id),
+        id: String(item.dish_id),
+        name: dealLineDisplayName(itemName, variationName),
+        itemName,
+        variationId: item.variation_id ?? null,
+        variationName,
+        unitPrice:
+          item.unit_price_snapshot != null
+            ? Number(item.unit_price_snapshot)
+            : undefined,
+        quantity: item.quantity,
+      };
+    }),
+  };
 }
 
 /* ── PUT /api/deals/[id] ── */
@@ -51,7 +93,7 @@ export async function PUT(
       branchId?: number | string;
       price?: number | string;
       status?: "active" | "inactive";
-      items?: IncomingDealItem[];
+      items?: IncomingDealLine[];
     };
 
     if (!name?.trim() || !type?.trim()) {
@@ -79,13 +121,13 @@ export async function PUT(
       await assertBranchWriteAccess(auth, branchIdNum);
     }
 
-    const normalizedItems = (items ?? [])
-      .map((item) => ({
-        id: Number(item.id),
-        name: item.name?.trim() ?? "",
-        quantity: Math.max(1, Number(item.quantity) || 1),
-      }))
-      .filter((item) => !Number.isNaN(item.id) && item.name.length > 0);
+    const normalizedLines = normalizeDealLines(items);
+    if (normalizedLines.length === 0) {
+      return NextResponse.json(
+        { error: "Select at least one included menu item" },
+        { status: 400 }
+      );
+    }
 
     const updatedId = await prisma.$transaction(async (tx) => {
       await tx.deal.update({
@@ -102,48 +144,31 @@ export async function PUT(
 
       await tx.dealItem.deleteMany({ where: { deal_id: dealId } });
 
-      for (const item of normalizedItems) {
-        const dish = await getDishForMenu(branchIdNum, item.id);
-        if (!dish) continue;
-
-        await tx.dealItem.create({
-          data: {
-            deal_id: dealId,
-            dish_id: dish.dish_id,
-            quantity: item.quantity,
-          },
-        });
+      const rows: Prisma.DealItemCreateManyInput[] = [];
+      for (const line of normalizedLines) {
+        const data = await buildDealItemData(tx, branchIdNum, line);
+        if (data) rows.push({ ...data, deal_id: dealId });
       }
+      if (rows.length === 0) {
+        throw new AuthError(
+          "Select at least one valid active menu item or variation",
+          400
+        );
+      }
+      await tx.dealItem.createMany({ data: rows });
 
       return dealId;
     });
 
     const updated = await prisma.deal.findUnique({
       where: { id: updatedId },
-      include: {
-        branch: { select: { branch_name: true } },
-        items: { include: { menu_item: { select: { name: true } } } },
-      },
+      include: dealItemInclude,
     });
     if (!updated) {
       return NextResponse.json({ error: "Failed to update deal" }, { status: 500 });
     }
 
-    return NextResponse.json({
-      id: String(updated.id),
-      name: updated.name,
-      type: updated.discount_type,
-      description: updated.description,
-      branchId: updated.branch_id ?? 0,
-      branchName: updated.branch?.branch_name ?? "All Branches",
-      price: Number(updated.discount_value),
-      status: updated.status === "Active" ? "active" : "inactive",
-      items: updated.items.map((item) => ({
-        id: String(item.dish_id),
-        name: item.menu_item.name,
-        quantity: item.quantity,
-      })),
-    });
+    return NextResponse.json(serializeDeal(updated));
   } catch (err) {
     if (err instanceof AuthError) {
       return NextResponse.json({ error: err.message }, { status: err.status });

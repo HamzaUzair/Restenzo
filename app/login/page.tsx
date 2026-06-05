@@ -20,6 +20,14 @@ import SiteBodyClass from "@/components/site/SiteBodyClass";
 import { apiFetch, getAuthSession, setAuthSession } from "@/lib/auth-client";
 import type { AuthSession } from "@/types/auth";
 
+type LoginErrorPayload = {
+  error?: string;
+  errorCode?: string;
+  nextAction?: string;
+  resumeToken?: string;
+  resumeEmail?: string;
+};
+
 function getDefaultRouteByRole(role: AuthSession["role"]) {
   if (role === "ORDER_TAKER") return "/create-order";
   if (role === "LIVE_KITCHEN") return "/kitchen";
@@ -41,7 +49,10 @@ function LoginInner() {
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(true);
   const [error, setError] = useState("");
+  const [errorCode, setErrorCode] = useState<string | null>(null);
+  const [resumeToken, setResumeToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isResumingSetup, setIsResumingSetup] = useState(false);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -55,6 +66,8 @@ function LoginInner() {
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError("");
+    setErrorCode(null);
+    setResumeToken(null);
     setIsLoading(true);
 
     try {
@@ -66,9 +79,13 @@ function LoginInner() {
           password,
         }),
       });
-      const data = await res.json();
+      const data = (await res.json()) as AuthSession & LoginErrorPayload;
       if (!res.ok) {
-        throw new Error(data.error || "Invalid username/email or password");
+        setError(data.error || "Invalid username/email or password");
+        setErrorCode(data.errorCode ?? null);
+        setResumeToken(data.resumeToken ?? null);
+        setIsLoading(false);
+        return;
       }
 
       const session = data as AuthSession;
@@ -77,6 +94,56 @@ function LoginInner() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
       setIsLoading(false);
+    }
+  };
+
+  const handleResumeSetup = async () => {
+    if (!resumeToken) return;
+    setIsResumingSetup(true);
+    setError("");
+
+    try {
+      const res = await apiFetch("/api/auth/onboarding/resume", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: resumeToken }),
+      });
+      const data = (await res.json()) as
+        | {
+            restaurantId: number;
+            userId: number;
+            email: string;
+            planId: string;
+            cycle: "monthly" | "yearly";
+            trialEnd: string | null;
+            clientSecret: string;
+            publishableKey: string | null;
+          }
+        | LoginErrorPayload;
+      if (!res.ok) {
+        throw new Error(
+          (data as LoginErrorPayload).error ||
+            "Unable to resume payment setup right now."
+        );
+      }
+      try {
+        window.sessionStorage.setItem(
+          "restenzo_onboarding_ctx",
+          JSON.stringify(data)
+        );
+      } catch {
+        // If sessionStorage is unavailable, the onboarding page will show
+        // a recovery prompt and the user can retry.
+      }
+      router.push("/onboarding");
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to resume payment setup right now."
+      );
+    } finally {
+      setIsResumingSetup(false);
     }
   };
 
@@ -136,9 +203,9 @@ function LoginInner() {
       {/* Right — Form */}
       <section className="relative flex flex-col p-6 sm:p-10">
         <div className="flex items-center justify-between">
-          <Link href="/" className="lg:hidden">
+          <div className="lg:hidden">
             <Logo size="sm" />
-          </Link>
+          </div>
           <div className="ml-auto flex items-center gap-3">
             <span className="hidden sm:inline text-sm text-gray-500 dark:text-gray-400">
               New to Restenzo?
@@ -185,6 +252,16 @@ function LoginInner() {
                   <span className="mt-0.5 h-1.5 w-1.5 rounded-full bg-red-500 shrink-0" />
                   {error}
                 </div>
+              )}
+              {errorCode === "ONBOARDING_INCOMPLETE" && resumeToken && (
+                <button
+                  type="button"
+                  onClick={handleResumeSetup}
+                  disabled={isResumingSetup}
+                  className="w-full inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl border border-[#ff5a1f]/30 text-[#ff5a1f] font-semibold hover:bg-[#ff5a1f]/5 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isResumingSetup ? "Opening payment setup…" : "Complete payment setup"}
+                </button>
               )}
 
               <div>

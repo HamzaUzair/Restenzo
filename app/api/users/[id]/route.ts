@@ -8,6 +8,10 @@ import {
   requireAuth,
   resolveDefaultBranchForSingleBranch,
 } from "@/lib/server-auth";
+import {
+  validateEmailUsername,
+  validateNameWithLetters,
+} from "@/lib/user-validation";
 
 type ApiUserRole =
   | "SUPER_ADMIN"
@@ -104,6 +108,18 @@ export async function PUT(
 
     const body = await request.json();
     const role = normalizeRole(body.role);
+    const username = String(body.username ?? "").trim();
+    const fullName = String(body.fullName ?? "").trim();
+
+    const usernameError = validateEmailUsername(username);
+    if (usernameError) {
+      return NextResponse.json({ error: usernameError }, { status: 400 });
+    }
+    const fullNameError = validateNameWithLetters(fullName);
+    if (fullNameError) {
+      return NextResponse.json({ error: fullNameError }, { status: 400 });
+    }
+
     if (!canManageRole(auth.role, role, auth.restaurantHasMultipleBranches)) {
       return NextResponse.json(
         { error: "You cannot assign this role" },
@@ -203,8 +219,8 @@ export async function PUT(
     const updated = await prisma.user.update({
       where: { id: userId },
       data: {
-        username: String(body.username ?? "").trim(),
-        fullname: String(body.fullName ?? "").trim(),
+        username,
+        fullname: fullName,
         role,
         restaurant_id: restaurantId,
         branch_id: branchId,

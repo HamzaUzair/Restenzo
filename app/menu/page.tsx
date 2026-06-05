@@ -2,13 +2,14 @@
 
 import React, { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { PlusCircle, UtensilsCrossed } from "lucide-react";
+import { PlusCircle, UtensilsCrossed, TrendingUp, CheckCircle2, X } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import ReadOnlyBanner from "@/components/layout/ReadOnlyBanner";
 import MenuToolbar, { type StatusFilter } from "@/components/menu/MenuToolbar";
 import MenuItemCard from "@/components/menu/MenuItemCard";
 import MenuTable from "@/components/menu/MenuTable";
 import MenuItemModal from "@/components/menu/MenuItemModal";
+import BulkPriceUpdateModal from "@/components/menu/BulkPriceUpdateModal";
 import type { ViewMode } from "@/components/menu/ViewToggle";
 import type { Branch } from "@/types/branch";
 import type { MenuItem, MenuItemFormData } from "@/types/menu";
@@ -56,6 +57,8 @@ export default function MenuPage() {
   const [categoryNames, setCategoryNames] = useState<string[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
+  const [bulkModalOpen, setBulkModalOpen] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
 
   /* ── Filters ── */
   const [filterBranchId, setFilterBranchId] = useState<number | "all">("all");
@@ -104,6 +107,13 @@ export default function MenuPage() {
     const t = setTimeout(() => setDebouncedSearch(search), 300);
     return () => clearTimeout(t);
   }, [search]);
+
+  /* ──────────────── Auto-dismiss success toast ──────────────── */
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3500);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   /* ──────────────── Fetch menu items from dedicated /api/menu ──────────────── */
   const fetchMenuItems = useCallback(async () => {
@@ -331,14 +341,24 @@ export default function MenuPage() {
 
           {!readOnly && (
             <div className="flex flex-col items-end gap-1">
-              <button
-                onClick={openCreate}
-                disabled={noBranches}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[#ff5a1f] text-white text-sm font-semibold hover:bg-[#e04e18] transition-colors cursor-pointer shadow-sm shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <PlusCircle size={18} />
-                + Add Menu Item
-              </button>
+              <div className="flex items-center gap-2.5">
+                <button
+                  onClick={() => setBulkModalOpen(true)}
+                  disabled={noBranches}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border border-gray-300 bg-white text-gray-700 text-sm font-semibold hover:bg-gray-50 hover:border-gray-400 transition-colors cursor-pointer shadow-sm shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <TrendingUp size={18} />
+                  Bulk Price Update
+                </button>
+                <button
+                  onClick={openCreate}
+                  disabled={noBranches}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[#ff5a1f] text-white text-sm font-semibold hover:bg-[#e04e18] transition-colors cursor-pointer shadow-sm shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <PlusCircle size={18} />
+                  + Add Menu Item
+                </button>
+              </div>
               {noBranches && (
                 <p className="text-xs text-red-500">
                   Create an active branch first
@@ -421,6 +441,39 @@ export default function MenuPage() {
         branchesLoading={branchesLoading}
         lockedBranchId={sessionBranchId}
       />
+
+      {/* ── Bulk Price Update ── */}
+      {!readOnly && (
+        <BulkPriceUpdateModal
+          isOpen={bulkModalOpen}
+          onClose={() => setBulkModalOpen(false)}
+          branchId={sessionBranchId !== null ? sessionBranchId : filterBranchId}
+          branches={branches}
+          onApplied={(summary) => {
+            fetchMenuItems();
+            setToast(
+              `Prices updated successfully · ${summary.updatedItemsCount} item${
+                summary.updatedItemsCount === 1 ? "" : "s"
+              } updated.`
+            );
+          }}
+        />
+      )}
+
+      {/* ── Success toast ── */}
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-[120] flex items-center gap-3 rounded-xl bg-white border border-green-200 shadow-lg px-4 py-3 max-w-sm">
+          <CheckCircle2 size={20} className="text-green-500 shrink-0" />
+          <p className="text-sm font-medium text-gray-700 flex-1">{toast}</p>
+          <button
+            onClick={() => setToast(null)}
+            className="p-1 rounded-md hover:bg-gray-100 text-gray-400 cursor-pointer"
+            aria-label="Dismiss"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
     </DashboardLayout>
   );
 }

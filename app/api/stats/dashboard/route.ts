@@ -49,11 +49,6 @@ export async function GET(request: NextRequest) {
     const branchIdParam = searchParams.get("branchId");
     const requestedBranchId =
       branchIdParam && branchIdParam !== "all" ? Number(branchIdParam) : null;
-    const restaurantIdParam = searchParams.get("restaurantId");
-    const requestedRestaurantId =
-      restaurantIdParam && restaurantIdParam !== "all"
-        ? Number(restaurantIdParam)
-        : null;
 
     if (auth.role === "SUPER_ADMIN") {
       const [

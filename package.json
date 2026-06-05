@@ -9,7 +9,8 @@
     "lint": "eslint",
     "db:seed": "npx prisma db seed",
     "seed:categories": "npx tsx prisma/seed-categories.ts",
-    "seed:menu-categories": "npx tsx prisma/seed-menu-categories.ts"
+    "seed:menu-categories": "npx tsx prisma/seed-menu-categories.ts",
+    "seed:plans": "npx tsx prisma/seed-plans.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.2",

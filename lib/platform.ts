@@ -11,7 +11,21 @@
  * without inventing fake numbers. When Stripe lands, these helpers can
  * be swapped for real subscription lookups with zero UI changes.
  */
-import { PLANS, YEARLY_DISCOUNT_PERCENT, type Plan } from "@/lib/pricing";
+import { YEARLY_DISCOUNT_PERCENT } from "@/lib/pricing";
+
+/**
+ * Minimal pricing slice the billing math needs from a plan. The platform
+ * overview route loads the real `plans` rows and passes them in, so MRR /
+ * customer counts always reflect the prices the Platform Admin has set.
+ */
+export interface PlanPricing {
+  slug: string;
+  name: string;
+  /** Per-month price billed monthly. */
+  monthlyPrice: number;
+  /** Per-month price when billed annually. */
+  yearlyPrice: number;
+}
 
 /** 14 day free trial window that matches the marketing site copy. */
 export const TRIAL_DAYS = 14;
@@ -57,7 +71,7 @@ export interface DerivedSubscription {
   restaurantId: number;
   restaurantName: string;
   slug: string;
-  planId: Plan["id"];
+  planId: string;
   planName: string;
   billingCycle: "monthly" | "yearly";
   status: DerivedSubscriptionStatus;
@@ -74,15 +88,31 @@ export interface DerivedSubscription {
   /** Stripe references are not wired yet but shaped here for future use. */
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
-  paymentStatus: "Paid" | "Pending" | "Failed" | "N/A";
+  paymentStatus: "Paid" | "Pending" | "Failed" | "Trial" | "N/A";
 }
 
-export function planForRestaurant(
+/**
+ * Resolve the plan a restaurant is on. Prefers the real `subscription.plan_id`
+ * slug; falls back to the legacy `has_multiple_branches` heuristic when no
+ * subscription row exists, then to the first plan provided.
+ */
+export function resolvePlanPricing(
+  plans: PlanPricing[],
+  planSlug: string | null | undefined,
   hasMultipleBranches: boolean
-): Plan {
-  return hasMultipleBranches
-    ? PLANS.find((p) => p.id === "multi")!
-    : PLANS.find((p) => p.id === "single")!;
+): PlanPricing {
+  const fallbackSlug = hasMultipleBranches ? "multi" : "single";
+  const slug = planSlug ?? fallbackSlug;
+  return (
+    plans.find((p) => p.slug === slug) ??
+    plans.find((p) => p.slug === fallbackSlug) ??
+    plans[0] ?? {
+      slug,
+      name: slug.charAt(0).toUpperCase() + slug.slice(1),
+      monthlyPrice: 0,
+      yearlyPrice: 0,
+    }
+  );
 }
 
 export function addDays(date: Date, days: number): Date {
@@ -129,16 +159,16 @@ function mapPaymentStatus(raw: string): DerivedSubscription["paymentStatus"] {
 
 /** Derive a virtual subscription for a single restaurant. */
 export function deriveSubscription(
-  r: RestaurantBillingInput
+  r: RestaurantBillingInput,
+  plans: PlanPricing[]
 ): DerivedSubscription {
-  const plan = planForRestaurant(r.has_multiple_branches);
-  const createdAt = new Date(r.created_at);
-  const now = new Date();
-
   // Prefer the real subscription row when Stripe has already provisioned
   // one for this tenant. Any missing fields fall through to the derived
   // defaults so the UI never blanks out while Stripe is propagating.
   const sub = r.subscription ?? null;
+  const plan = resolvePlanPricing(plans, sub?.plan_id, r.has_multiple_branches);
+  const createdAt = new Date(r.created_at);
+  const now = new Date();
 
   const cycle: "monthly" | "yearly" =
     (sub?.billing_cycle as "monthly" | "yearly") ??
@@ -173,24 +203,39 @@ export function deriveSubscription(
     while (renewal < now) renewal = addDays(renewal, stepDays);
   }
 
-  const monthlyPrice = cycle === "yearly" ? plan.yearly : plan.monthly;
+  const monthlyPrice = cycle === "yearly" ? plan.yearlyPrice : plan.monthlyPrice;
   const cyclePrice = cycle === "yearly" ? monthlyPrice * 12 : monthlyPrice;
 
-  const paymentStatus: DerivedSubscription["paymentStatus"] = sub
-    ? mapPaymentStatus(sub.payment_status)
-    : status === "Suspended"
-      ? "Failed"
-      : status === "Inactive"
-        ? "N/A"
-        : status === "Trial"
-          ? "N/A"
-          : "Paid";
+  // Payment display rules:
+  //  - On trial → always show "Trial" (never N/A), regardless of the stored
+  //    payment_status, since Stripe reports "n_a" while a trial is running.
+  //  - Active tenants backed by a real Stripe subscription should never show
+  //    N/A — if the record hasn't flipped to "paid" yet, surface "Pending".
+  //  - Otherwise fall through to the stored payment_status mapping.
+  let paymentStatus: DerivedSubscription["paymentStatus"];
+  if (status === "Trial") {
+    paymentStatus = "Trial";
+  } else if (sub) {
+    const mapped = mapPaymentStatus(sub.payment_status);
+    if (status === "Active" && mapped === "N/A") {
+      paymentStatus =
+        sub.stripe_subscription_id || sub.stripe_customer_id ? "Paid" : "N/A";
+    } else {
+      paymentStatus = mapped;
+    }
+  } else if (status === "Suspended") {
+    paymentStatus = "Failed";
+  } else if (status === "Inactive") {
+    paymentStatus = "N/A";
+  } else {
+    paymentStatus = "Paid";
+  }
 
   return {
     restaurantId: r.restaurant_id,
     restaurantName: r.name,
     slug: r.slug,
-    planId: plan.id,
+    planId: plan.slug,
     planName: plan.name,
     billingCycle: cycle,
     status,
@@ -216,8 +261,8 @@ export interface PlatformBillingSummary {
   canceledOrSuspendedCustomers: number;
   monthlyCustomers: number;
   yearlyCustomers: number;
-  /** Revenue broken down by plan id. */
-  byPlan: Array<{ planId: Plan["id"]; planName: string; customers: number; mrr: number }>;
+  /** Revenue broken down by plan slug. */
+  byPlan: Array<{ planId: string; planName: string; customers: number; mrr: number }>;
 }
 
 export function summarizeBilling(
@@ -233,8 +278,8 @@ export function summarizeBilling(
   const mrr = active.reduce((sum, s) => sum + s.monthlyPrice, 0);
 
   const byPlanMap = new Map<
-    Plan["id"],
-    { planId: Plan["id"]; planName: string; customers: number; mrr: number }
+    string,
+    { planId: string; planName: string; customers: number; mrr: number }
   >();
   active.forEach((s) => {
     const existing = byPlanMap.get(s.planId) ?? {

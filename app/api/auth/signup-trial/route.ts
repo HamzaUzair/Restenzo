@@ -33,7 +33,9 @@ import {
   TRIAL_DAYS,
 } from "@/lib/stripe";
 import { generateUniqueBranchCode } from "@/lib/branch-code";
+import { seedDefaultCategoriesForBranch } from "@/lib/seedDefaultCategories";
 import type { BillingCycle } from "@/lib/pricing";
+import { issueOnboardingResumeToken } from "@/lib/onboarding-resume";
 
 function slugify(input: string) {
   return String(input)
@@ -106,9 +108,45 @@ export async function POST(request: NextRequest) {
 
     const existingUser = await prisma.user.findFirst({
       where: { username: { equals: email, mode: "insensitive" } },
-      select: { id: true },
+      include: {
+        restaurant: {
+          select: {
+            onboarding_complete: true,
+          },
+        },
+      },
     });
     if (existingUser) {
+      const isIncompleteSignup =
+        existingUser.role === "RESTAURANT_ADMIN" &&
+        existingUser.restaurant_id != null &&
+        existingUser.status !== "Active" &&
+        existingUser.restaurant?.onboarding_complete === false;
+
+      if (isIncompleteSignup) {
+        if (existingUser.password !== password) {
+          return NextResponse.json(
+            {
+              error:
+                "This email already exists with an incomplete signup. Use the same password to continue payment setup or sign in to resume.",
+              errorCode: "ONBOARDING_INCOMPLETE",
+              canResumeSetup: false,
+            },
+            { status: 409 }
+          );
+        }
+        return NextResponse.json(
+          {
+            error:
+              "This account already exists but setup is incomplete. Continue payment setup to start your 14 day free trial.",
+            errorCode: "ONBOARDING_INCOMPLETE",
+            canResumeSetup: true,
+            resumeToken: issueOnboardingResumeToken(existingUser.id, existingUser.username),
+            resumeEmail: existingUser.username,
+          },
+          { status: 409 }
+        );
+      }
       return NextResponse.json(
         { error: "An account with this email already exists" },
         { status: 409 }
@@ -118,6 +156,8 @@ export async function POST(request: NextRequest) {
     const hasMultipleBranches = restaurantType === "MULTI";
     const planId = hasMultipleBranches ? "multi" : "single";
     const slug = await uniqueSlugFromName(restaurantName);
+
+    const stripeAvailable = stripeEnabled();
 
     // ── 1. Tenant + user provisioning ───────────────────────────────────
     // We create the restaurant row first so we can pin the Stripe Customer
@@ -140,7 +180,7 @@ export async function POST(request: NextRequest) {
         const branchCode = await generateUniqueBranchCode(slug, {
           suffix: "MAIN",
         });
-        await tx.branch.create({
+        const mainBranch = await tx.branch.create({
           data: {
             branch_name: "Main Branch",
             branch_code: branchCode,
@@ -150,6 +190,7 @@ export async function POST(request: NextRequest) {
             status: "Active",
           },
         });
+        await seedDefaultCategoriesForBranch(mainBranch.branch_id, tx);
       }
 
       const user = await tx.user.create({
@@ -161,7 +202,10 @@ export async function POST(request: NextRequest) {
           restaurant_id: restaurant.restaurant_id,
           branch_id: null,
           terminal: 1,
-          status: "Active",
+          // Keep new self-serve accounts blocked until Stripe onboarding
+          // completes (setup_intent.succeeded webhook). In Stripe-disabled
+          // environments we allow immediate access.
+          status: stripeAvailable ? "Inactive" : "Active",
           token: randomUUID(),
         },
       });
@@ -181,7 +225,7 @@ export async function POST(request: NextRequest) {
     let rawStatus = "trialing";
     let paymentStatus = "n_a";
 
-    if (stripeEnabled()) {
+    if (stripeAvailable) {
       try {
         const { priceId } = await ensureStripePriceForPlan(planId, cycle);
         stripePriceId = priceId;
@@ -282,7 +326,7 @@ export async function POST(request: NextRequest) {
         cycle,
         trialEnd: trialEnd?.toISOString() ?? null,
         stripe: {
-          enabled: stripeEnabled(),
+          enabled: stripeAvailable,
           customerId: stripeCustomerId,
           subscriptionId: stripeSubscriptionId,
           priceId: stripePriceId,

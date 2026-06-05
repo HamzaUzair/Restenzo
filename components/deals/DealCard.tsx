@@ -76,7 +76,7 @@ const DealCard: React.FC<DealCardProps> = ({ deal, onEdit, onDelete, readOnly = 
         <div className="space-y-1.5">
           {visibleItems.map((item) => (
             <div
-              key={`${deal.id}-${item.id}`}
+              key={item.lineId ?? `${deal.id}-${item.id}`}
               className="deal-item-row flex items-center justify-between gap-2 rounded-md border border-gray-100 bg-gray-50/70 px-2.5 py-1.5"
             >
               <span className="deal-item-name text-xs text-gray-700 truncate pr-2">{item.name}</span>

@@ -5,6 +5,7 @@ import {
   normalizeRole,
   resolveDefaultBranchForSingleBranch,
 } from "@/lib/server-auth";
+import { issueOnboardingResumeToken } from "@/lib/onboarding-resume";
 
 const DEFAULT_SUPER_ADMIN_USERNAME = "sdmain@gmail.com";
 const DEFAULT_SUPER_ADMIN_PASSWORD = "Asdf0010";
@@ -32,6 +33,7 @@ export async function POST(request: NextRequest) {
             restaurant_id: true,
             name: true,
             has_multiple_branches: true,
+            onboarding_complete: true,
           },
         },
         branch: { select: { branch_id: true, branch_name: true } },
@@ -58,6 +60,7 @@ export async function POST(request: NextRequest) {
               restaurant_id: true,
               name: true,
               has_multiple_branches: true,
+            onboarding_complete: true,
             },
           },
           branch: { select: { branch_id: true, branch_name: true } },
@@ -68,7 +71,37 @@ export async function POST(request: NextRequest) {
     if (!user || user.password !== password) {
       return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
     }
+    if (
+      user.status !== "Active" &&
+      user.role === "RESTAURANT_ADMIN" &&
+      user.restaurant_id &&
+      user.restaurant?.onboarding_complete === true
+    ) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { status: "Active" },
+      });
+      user.status = "Active";
+    }
     if (user.status !== "Active") {
+      if (
+        user.restaurant_id &&
+        user.restaurant?.onboarding_complete === false &&
+        user.role === "RESTAURANT_ADMIN"
+      ) {
+        const resumeToken = issueOnboardingResumeToken(user.id, user.username);
+        return NextResponse.json(
+          {
+            error:
+              "Your signup is incomplete. Please complete payment setup to start your 14 day free trial.",
+            errorCode: "ONBOARDING_INCOMPLETE",
+            nextAction: "resume_setup",
+            resumeToken,
+            resumeEmail: user.username,
+          },
+          { status: 403 }
+        );
+      }
       return NextResponse.json({ error: "User is inactive" }, { status: 403 });
     }
 

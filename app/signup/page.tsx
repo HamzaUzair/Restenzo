@@ -1,6 +1,12 @@
 "use client";
 
-import React, { Suspense, useMemo, useState, type FormEvent } from "react";
+import React, {
+  Suspense,
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+} from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
@@ -20,9 +26,30 @@ import Logo from "@/components/site/Logo";
 import ThemeToggle from "@/components/theme/ThemeToggle";
 import SiteBodyClass from "@/components/site/SiteBodyClass";
 import { PLANS, YEARLY_DISCOUNT_PERCENT, type BillingCycle } from "@/lib/pricing";
+import type { PublicPlan } from "@/types/plan";
 
 type PlanId = "single" | "multi" | "enterprise";
 type RestaurantType = "SINGLE" | "MULTI";
+
+/** Normalized plan shape the signup sidebar renders. */
+interface SignupPlan {
+  slug: string;
+  name: string;
+  description: string;
+  monthlyPrice: number;
+  yearlyPrice: number;
+  features: string[];
+}
+
+/** Bundled defaults used until the public plans API resolves (or if it fails). */
+const FALLBACK_SIGNUP_PLANS: SignupPlan[] = PLANS.map((p) => ({
+  slug: p.id,
+  name: p.name,
+  description: p.tagline,
+  monthlyPrice: p.monthly,
+  yearlyPrice: p.yearly,
+  features: [...p.features],
+}));
 
 function SignUpInner() {
   const router = useRouter();
@@ -42,14 +69,47 @@ function SignUpInner() {
   const [cycle, setCycle] = useState<BillingCycle>(cycleParam);
   const [agree, setAgree] = useState(true);
   const [error, setError] = useState("");
+  const [resumeToken, setResumeToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [resumingSetup, setResumingSetup] = useState(false);
+
+  const [plans, setPlans] = useState<SignupPlan[]>(FALLBACK_SIGNUP_PLANS);
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/public/plans")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body: { plans: PublicPlan[] } | null) => {
+        if (!active || !body?.plans?.length) return;
+        setPlans(
+          body.plans.map((p) => ({
+            slug: p.slug,
+            name: p.name,
+            description: p.description,
+            monthlyPrice: p.monthlyPrice,
+            yearlyPrice: p.yearlyPrice,
+            features: p.features,
+          }))
+        );
+      })
+      .catch(() => {
+        /* keep fallback defaults */
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const selectedPlan = useMemo(() => {
-    if (restaurantType === "SINGLE") return PLANS.find((p) => p.id === "single")!;
-    return PLANS.find((p) => p.id === "multi")!;
-  }, [restaurantType]);
+    const wanted = restaurantType === "SINGLE" ? "single" : "multi";
+    return (
+      plans.find((p) => p.slug === wanted) ??
+      FALLBACK_SIGNUP_PLANS.find((p) => p.slug === wanted)!
+    );
+  }, [restaurantType, plans]);
 
-  const price = cycle === "yearly" ? selectedPlan.yearly : selectedPlan.monthly;
+  const price =
+    cycle === "yearly" ? selectedPlan.yearlyPrice : selectedPlan.monthlyPrice;
 
   const strength = useMemo(() => {
     let s = 0;
@@ -63,6 +123,7 @@ function SignUpInner() {
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError("");
+    setResumeToken(null);
 
     if (password.length < 8) {
       setError("Password must be at least 8 characters.");
@@ -97,6 +158,9 @@ function SignUpInner() {
       });
       const data = await res.json();
       if (!res.ok) {
+        if (data?.errorCode === "ONBOARDING_INCOMPLETE" && data?.canResumeSetup) {
+          setResumeToken(data.resumeToken ?? null);
+        }
         throw new Error(data?.error || "Signup failed. Please try again.");
       }
 
@@ -124,10 +188,17 @@ function SignUpInner() {
           // onboarding page will surface a friendly retry in that case.
         }
         router.push("/onboarding");
+      } else if (stripeCtx.enabled) {
+        // Stripe is enabled but this signup did not receive a usable
+        // onboarding client secret. Keep the account pending and ask the
+        // user to retry instead of sending them to login.
+        throw new Error(
+          "We couldn't initialize payment setup. Please refresh and try again."
+        );
       } else {
         // Stripe is not configured yet — still let the user sign in.
         const params = new URLSearchParams({
-          plan: selectedPlan.id,
+          plan: selectedPlan.slug,
           cycle,
           email,
           newAccount: "1",
@@ -137,6 +208,42 @@ function SignUpInner() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Signup failed.");
       setLoading(false);
+    }
+  };
+
+  const handleResumeSetup = async () => {
+    if (!resumeToken) return;
+    setResumingSetup(true);
+    setError("");
+    try {
+      const res = await fetch("/api/auth/onboarding/resume", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: resumeToken }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(
+          data?.error || "Unable to continue payment setup right now."
+        );
+      }
+      try {
+        window.sessionStorage.setItem(
+          "restenzo_onboarding_ctx",
+          JSON.stringify(data)
+        );
+      } catch {
+        // Recovery fallback handled by the onboarding page.
+      }
+      router.push("/onboarding");
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to continue payment setup right now."
+      );
+    } finally {
+      setResumingSetup(false);
     }
   };
 
@@ -192,6 +299,16 @@ function SignUpInner() {
                   <span className="mt-0.5 h-1.5 w-1.5 rounded-full bg-red-500 shrink-0" />
                   {error}
                 </div>
+              )}
+              {resumeToken && (
+                <button
+                  type="button"
+                  onClick={handleResumeSetup}
+                  disabled={resumingSetup}
+                  className="w-full inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl border border-[#ff5a1f]/30 text-[#ff5a1f] font-semibold hover:bg-[#ff5a1f]/5 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {resumingSetup ? "Opening payment setup…" : "Continue payment setup"}
+                </button>
               )}
 
               {/* Restaurant type */}
@@ -513,7 +630,7 @@ function SignUpInner() {
               <p className="text-xs font-semibold tracking-wider uppercase text-[#ff5a1f]">
                 {selectedPlan.name} plan
               </p>
-              <p className="mt-1 text-sm text-gray-500">{selectedPlan.tagline}</p>
+              <p className="mt-1 text-sm text-gray-500">{selectedPlan.description}</p>
             </div>
             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#ff5a1f]/10 text-[#ff5a1f] text-[11px] font-bold">
               <Sparkles className="h-3 w-3" />
@@ -529,7 +646,7 @@ function SignUpInner() {
           </div>
           {cycle === "yearly" && (
             <p className="text-xs text-gray-500 mt-1">
-              Billed annually at ${selectedPlan.yearly * 12}.
+              Billed annually at ${selectedPlan.yearlyPrice * 12}.
             </p>
           )}
 

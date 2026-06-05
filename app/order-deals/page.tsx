@@ -183,7 +183,7 @@ export default function OrderTakerDealsPage() {
                 </p>
                 <ul className="text-sm text-gray-700 space-y-1">
                   {deal.items.map((item) => (
-                    <li key={`${deal.id}-${item.id}`}>
+                    <li key={item.lineId ?? `${deal.id}-${item.id}`}>
                       {item.name} × {item.quantity}
                     </li>
                   ))}

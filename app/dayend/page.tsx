@@ -81,6 +81,8 @@ export default function DayEndPage() {
   const [payments, setPayments] = useState<PaymentBreakdownType[]>([]);
   const [expenses, setExpenses] = useState<ExpenseEntry[]>([]);
   const [topItems, setTopItems] = useState<TopSellingItem[]>([]);
+  const [topItemsByQuantity, setTopItemsByQuantity] = useState<TopSellingItem[]>([]);
+  const [topItemsBySales, setTopItemsBySales] = useState<TopSellingItem[]>([]);
   const [hourlySales, setHourlySales] = useState<HourlySalesType[]>([]);
   const [history, setHistory] = useState<DayEndRecord[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
@@ -177,6 +179,8 @@ export default function DayEndPage() {
         setPayments([]);
         setExpenses([]);
         setTopItems([]);
+        setTopItemsByQuantity([]);
+        setTopItemsBySales([]);
         setHourlySales([]);
         return;
       }
@@ -186,6 +190,12 @@ export default function DayEndPage() {
       setPayments(data.payments);
       setExpenses(data.expenses);
       setTopItems(data.topItems);
+      // Fall back to the legacy single list when an older API version
+      // doesn't yet emit the dual rankings (e.g. mid-deploy). The legacy
+      // list is sales-ranked, so we mirror it into both cards rather than
+      // leave one empty by accident.
+      setTopItemsByQuantity(data.topItemsByQuantity ?? data.topItems);
+      setTopItemsBySales(data.topItemsBySales ?? data.topItems);
       setHourlySales(data.hourlySales);
     } catch {
       showToast("Failed to load day end data", "error");
@@ -304,11 +314,21 @@ export default function DayEndPage() {
       lines.push(`${csvEscape(e.title)},${csvEscape(e.category)},${e.amount},${csvEscape(e.createdAt)}`);
     }
     lines.push("");
-    lines.push("Top Selling Items");
-    lines.push("Name,Quantity,Revenue");
-    for (const t of topItems) {
-      lines.push(`${csvEscape(t.name)},${t.quantity},${t.revenue}`);
-    }
+    lines.push("Top Selling Items by Quantity");
+    lines.push("Rank,Name,Category,Quantity,Revenue");
+    (topItemsByQuantity.length ? topItemsByQuantity : topItems).forEach((t, i) => {
+      lines.push(
+        `${i + 1},${csvEscape(t.name)},${csvEscape(t.category ?? "")},${t.quantity},${t.revenue}`
+      );
+    });
+    lines.push("");
+    lines.push("Top Selling Items by Sales");
+    lines.push("Rank,Name,Category,Quantity,Revenue");
+    (topItemsBySales.length ? topItemsBySales : topItems).forEach((t, i) => {
+      lines.push(
+        `${i + 1},${csvEscape(t.name)},${csvEscape(t.category ?? "")},${t.quantity},${t.revenue}`
+      );
+    });
     lines.push("");
     lines.push("Hourly Sales");
     lines.push("Hour,Orders,Revenue");
@@ -439,8 +459,15 @@ export default function DayEndPage() {
             />
           </div>
 
+          {/* Top Selling Items — split into two ranked cards (by quantity
+              + by sales) on its own row so the Hourly Sales chart never
+              has to compete for horizontal space below. */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-            <TopSellingItems items={topItems} />
+            <TopSellingItems variant="quantity" items={topItemsByQuantity} />
+            <TopSellingItems variant="sales" items={topItemsBySales} />
+          </div>
+
+          <div className="mb-6">
             <HourlySales data={hourlySales} maxRevenue={maxHourlyRevenue} />
           </div>
 

@@ -4,92 +4,90 @@
  * Stripe webhook receiver. Keeps the `subscriptions` table in sync with
  * Stripe's view of the world. Handles:
  *
+ *   - checkout.session.completed
  *   - customer.subscription.created
  *   - customer.subscription.updated
  *   - customer.subscription.deleted
  *   - customer.subscription.trial_will_end
  *   - invoice.paid
+ *   - invoice.payment_succeeded
  *   - invoice.payment_failed
  *   - setup_intent.succeeded           (card attached during onboarding)
  *   - payment_method.attached
  *
- * Signature verification relies on STRIPE_WEBHOOK_SECRET. When the secret
- * is not configured yet we log-and-accept the payload so local dev still
- * works, but production should always have the secret set.
+ * Signature verification relies on STRIPE_WEBHOOK_SECRET (use the Stripe CLI's
+ * `whsec_...` value in test mode). When the secret is not configured we
+ * log-and-accept the payload so local smoke tests still work, but production
+ * should always have the secret set.
+ *
+ * All handlers are idempotent — replaying the same event simply rewrites the
+ * same columns and never creates duplicate subscription rows.
  */
 import { NextRequest, NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { prisma } from "@/lib/prisma";
-import {
-  getStripeOrNull,
-  normalizeSubscriptionStatus,
-  derivePaymentStatus,
-} from "@/lib/stripe";
+import { getStripeOrNull } from "@/lib/stripe";
+import { reconcileStripeSubscription } from "@/lib/subscription-sync";
 
 export const runtime = "nodejs";
 // Disable Next's default JSON body parsing so we can hand Stripe the raw
 // request body (needed for signature verification).
 export const dynamic = "force-dynamic";
 
-interface SubscriptionWithPeriods extends Stripe.Subscription {
-  current_period_start?: number | null;
-  current_period_end?: number | null;
+function customerIdOf(
+  customer: string | { id: string } | null | undefined
+): string | null {
+  if (!customer) return null;
+  return typeof customer === "string" ? customer : customer.id ?? null;
 }
 
-function readPeriods(sub: Stripe.Subscription) {
-  const item = sub.items?.data?.[0];
-  const s = sub as SubscriptionWithPeriods;
-  return {
-    start: item?.current_period_start ?? s.current_period_start ?? null,
-    end: item?.current_period_end ?? s.current_period_end ?? null,
+/** Resolves and reconciles the subscription referenced by an invoice. */
+async function reconcileInvoiceSubscription(
+  stripe: Stripe,
+  invoice: Stripe.Invoice
+): Promise<boolean> {
+  const inv = invoice as Stripe.Invoice & {
+    subscription?: string | Stripe.Subscription | null;
   };
+  const subscriptionId =
+    typeof inv.subscription === "string"
+      ? inv.subscription
+      : inv.subscription?.id ?? null;
+
+  if (subscriptionId) {
+    const sub = await stripe.subscriptions.retrieve(subscriptionId);
+    const result = await reconcileStripeSubscription(sub, "invoice");
+    return result.matched;
+  }
+  return false;
 }
 
-async function applySubscriptionUpdate(sub: Stripe.Subscription) {
-  const restaurantIdRaw = sub.metadata?.restenzo_restaurant_id;
-  const restaurantId = restaurantIdRaw ? Number(restaurantIdRaw) : null;
-  if (!restaurantId) return;
-
-  const existing = await prisma.subscription.findUnique({
-    where: { restaurant_id: restaurantId },
+async function applyInvoicePaidFallback(invoice: Stripe.Invoice) {
+  const customerId = customerIdOf(invoice.customer);
+  if (!customerId) return;
+  await prisma.subscription.updateMany({
+    where: { stripe_customer_id: customerId },
+    data: { payment_status: "paid" },
   });
-  if (!existing) return;
-
-  const periods = readPeriods(sub);
-  await prisma.subscription.update({
-    where: { restaurant_id: restaurantId },
-    data: {
-      status: normalizeSubscriptionStatus(sub.status),
-      payment_status: derivePaymentStatus(sub),
-      stripe_subscription_id: sub.id,
-      stripe_customer_id:
-        typeof sub.customer === "string" ? sub.customer : sub.customer?.id,
-      stripe_price_id: sub.items?.data?.[0]?.price?.id ?? null,
-      trial_start: sub.trial_start ? new Date(sub.trial_start * 1000) : null,
-      trial_end: sub.trial_end ? new Date(sub.trial_end * 1000) : null,
-      current_period_start: periods.start ? new Date(periods.start * 1000) : null,
-      current_period_end: periods.end ? new Date(periods.end * 1000) : null,
-      cancel_at_period_end: Boolean(sub.cancel_at_period_end),
-      canceled_at: sub.canceled_at ? new Date(sub.canceled_at * 1000) : null,
-    },
+  console.log("[stripe-webhook] invoice paid (customer fallback)", {
+    stripeCustomerId: customerId,
   });
+}
 
-  if (sub.status === "canceled" || sub.status === "unpaid") {
-    await prisma.restaurant.update({
-      where: { restaurant_id: restaurantId },
-      data: { status: sub.status === "canceled" ? "Inactive" : "Suspended" },
-    });
-  } else if (sub.status === "active" || sub.status === "trialing") {
-    await prisma.restaurant.update({
-      where: { restaurant_id: restaurantId },
-      data: { status: "Active", onboarding_complete: true },
-    });
-  }
+async function applyInvoiceFailed(invoice: Stripe.Invoice) {
+  const customerId = customerIdOf(invoice.customer);
+  if (!customerId) return;
+  await prisma.subscription.updateMany({
+    where: { stripe_customer_id: customerId },
+    data: { payment_status: "failed" },
+  });
+  console.log("[stripe-webhook] invoice payment failed", {
+    stripeCustomerId: customerId,
+  });
 }
 
 async function applyPaymentMethodAttached(pm: Stripe.PaymentMethod) {
-  const customerId =
-    typeof pm.customer === "string" ? pm.customer : pm.customer?.id ?? null;
+  const customerId = customerIdOf(pm.customer);
   if (!customerId) return;
   await prisma.subscription.updateMany({
     where: { stripe_customer_id: customerId },
@@ -97,28 +95,81 @@ async function applyPaymentMethodAttached(pm: Stripe.PaymentMethod) {
   });
 }
 
-async function applyInvoicePaid(invoice: Stripe.Invoice) {
-  const customerId =
-    typeof invoice.customer === "string"
-      ? invoice.customer
-      : invoice.customer?.id ?? null;
-  if (!customerId) return;
-  await prisma.subscription.updateMany({
-    where: { stripe_customer_id: customerId },
-    data: { payment_status: "paid" },
-  });
+async function activateOnboardingByRestaurantId(restaurantId: number) {
+  await prisma.$transaction([
+    prisma.restaurant.update({
+      where: { restaurant_id: restaurantId },
+      data: { onboarding_complete: true, status: "Active" },
+    }),
+    prisma.user.updateMany({
+      where: { restaurant_id: restaurantId, role: "RESTAURANT_ADMIN" },
+      data: { status: "Active" },
+    }),
+  ]);
 }
 
-async function applyInvoiceFailed(invoice: Stripe.Invoice) {
-  const customerId =
-    typeof invoice.customer === "string"
-      ? invoice.customer
-      : invoice.customer?.id ?? null;
-  if (!customerId) return;
-  await prisma.subscription.updateMany({
-    where: { stripe_customer_id: customerId },
-    data: { payment_status: "failed" },
-  });
+async function applySetupIntentSucceeded(si: Stripe.SetupIntent) {
+  const customerId = customerIdOf(si.customer);
+  let matchedRestaurantId: number | null = null;
+  if (customerId) {
+    const sub = await prisma.subscription.findFirst({
+      where: { stripe_customer_id: customerId },
+      select: { restaurant_id: true },
+    });
+    matchedRestaurantId = sub?.restaurant_id ?? null;
+  }
+  if (!matchedRestaurantId) {
+    const metadataRestaurantId = Number(
+      si.metadata?.restenzo_restaurant_id ?? 0
+    );
+    if (Number.isFinite(metadataRestaurantId) && metadataRestaurantId > 0) {
+      matchedRestaurantId = metadataRestaurantId;
+    }
+  }
+  if (matchedRestaurantId) {
+    await activateOnboardingByRestaurantId(matchedRestaurantId);
+    console.log("[stripe-webhook] onboarding activated", {
+      restaurantId: matchedRestaurantId,
+      setupIntentId: si.id,
+    });
+  } else {
+    console.warn("[stripe-webhook] setup_intent.succeeded had no local match", {
+      setupIntentId: si.id,
+      customerId,
+      metadataRestaurantId: si.metadata?.restenzo_restaurant_id ?? null,
+    });
+  }
+}
+
+async function applyCheckoutCompleted(
+  stripe: Stripe,
+  session: Stripe.Checkout.Session
+) {
+  const subscriptionId =
+    typeof session.subscription === "string"
+      ? session.subscription
+      : session.subscription?.id ?? null;
+
+  if (subscriptionId) {
+    const sub = await stripe.subscriptions.retrieve(subscriptionId);
+    const result = await reconcileStripeSubscription(sub, "checkout");
+    if (result.matched && result.restaurantId) {
+      await activateOnboardingByRestaurantId(result.restaurantId);
+    }
+    return;
+  }
+
+  // Subscription not attached to the session — fall back to metadata so we can
+  // at least finalize onboarding for the right tenant.
+  const metaId = Number(session.metadata?.restenzo_restaurant_id ?? 0);
+  if (Number.isFinite(metaId) && metaId > 0) {
+    await activateOnboardingByRestaurantId(metaId);
+  } else {
+    console.warn("[stripe-webhook] checkout.session.completed had no match", {
+      sessionId: session.id,
+      customerId: customerIdOf(session.customer as string | { id: string } | null),
+    });
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -156,13 +207,28 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  console.log("[stripe-webhook] received", {
+    type: event.type,
+    id: event.id,
+  });
+
   try {
     switch (event.type) {
+      case "checkout.session.completed": {
+        await applyCheckoutCompleted(
+          stripe,
+          event.data.object as Stripe.Checkout.Session
+        );
+        break;
+      }
       case "customer.subscription.created":
       case "customer.subscription.updated":
       case "customer.subscription.deleted":
       case "customer.subscription.trial_will_end": {
-        await applySubscriptionUpdate(event.data.object as Stripe.Subscription);
+        await reconcileStripeSubscription(
+          event.data.object as Stripe.Subscription,
+          event.type
+        );
         break;
       }
       case "payment_method.attached": {
@@ -172,23 +238,17 @@ export async function POST(request: NextRequest) {
         break;
       }
       case "setup_intent.succeeded": {
-        const si = event.data.object as Stripe.SetupIntent;
-        const customerId =
-          typeof si.customer === "string"
-            ? si.customer
-            : si.customer?.id ?? null;
-        if (customerId) {
-          await prisma.restaurant.updateMany({
-            where: {
-              subscription: { stripe_customer_id: customerId },
-            },
-            data: { onboarding_complete: true },
-          });
-        }
+        await applySetupIntentSucceeded(event.data.object as Stripe.SetupIntent);
         break;
       }
-      case "invoice.paid": {
-        await applyInvoicePaid(event.data.object as Stripe.Invoice);
+      case "invoice.paid":
+      case "invoice.payment_succeeded": {
+        const invoice = event.data.object as Stripe.Invoice;
+        // Reconcile the full subscription so status flips trialing → active in
+        // the same beat as payment_status → paid. Fall back to a direct
+        // customer-scoped update if the subscription can't be resolved.
+        const matched = await reconcileInvoiceSubscription(stripe, invoice);
+        if (!matched) await applyInvoicePaidFallback(invoice);
         break;
       }
       case "invoice.payment_failed": {

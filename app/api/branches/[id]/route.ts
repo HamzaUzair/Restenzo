@@ -5,6 +5,7 @@ import {
   assertBranchWithinRestaurant,
   requireAuth,
 } from "@/lib/server-auth";
+import { validateBranchTextField } from "@/lib/branch-field-validation";
 
 export async function DELETE(
   request: NextRequest,
@@ -75,21 +76,32 @@ export async function PUT(
     const body = await request.json();
     const { branch_name, address, city, status } = body;
 
-    if (!branch_name?.trim()) {
+    const branchNameError = validateBranchTextField(
+      branch_name,
+      "Branch name is required"
+    );
+    if (branchNameError) {
       return NextResponse.json(
-        { error: "Branch name is required" },
+        { error: branchNameError },
         { status: 400 }
       );
     }
-    if (!address?.trim()) {
+
+    const addressError = validateBranchTextField(
+      address,
+      "Complete address is required"
+    );
+    if (addressError) {
       return NextResponse.json(
-        { error: "Complete address is required" },
+        { error: addressError },
         { status: 400 }
       );
     }
-    if (!city?.trim()) {
+
+    const cityError = validateBranchTextField(city, "City is required");
+    if (cityError) {
       return NextResponse.json(
-        { error: "City is required" },
+        { error: cityError },
         { status: 400 }
       );
     }

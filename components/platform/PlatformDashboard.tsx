@@ -9,17 +9,14 @@ import {
   GitBranch,
   ShieldCheck,
   AlertTriangle,
-  Activity,
   Sparkles,
   DollarSign,
   Clock3,
   ArrowRight,
-  ArrowUpRight,
   PauseCircle,
   Timer,
   Wallet,
   CreditCard,
-  LifeBuoy,
   Loader2,
   RefreshCw,
 } from "lucide-react";
@@ -164,14 +161,6 @@ const PlatformDashboard: React.FC<PlatformDashboardProps> = ({
       hint: `${overview.trialDays} day free trial`,
     },
     {
-      label: "Pending Setup",
-      value: overview.pendingSetup,
-      icon: <AlertTriangle size={18} />,
-      tint: "text-amber-700 bg-amber-100",
-      href: "/setup-health",
-      hint: "Setup or admin issues",
-    },
-    {
       label: "Monthly Recurring Revenue",
       value: formatUSD(billing.mrr),
       icon: <DollarSign size={18} />,
@@ -199,8 +188,8 @@ const PlatformDashboard: React.FC<PlatformDashboardProps> = ({
     .filter(
       (t) =>
         t.status !== "Active" ||
-        !t.setupComplete ||
-        t.subscription.status === "Suspended"
+        t.subscription.status === "Suspended" ||
+        t.subscription.status === "Past Due"
     )
     .slice(0, 6);
 
@@ -214,9 +203,9 @@ const PlatformDashboard: React.FC<PlatformDashboardProps> = ({
   return (
     <DashboardLayout title="Dashboard">
       {/* Hero / title card */}
-      <div className="mb-6 relative overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
+      <div className="mb-6 relative overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm dark:border-[#1f2a3d] dark:!bg-[#0b1220]">
         <div
-          className="absolute inset-0 bg-gradient-to-br from-[#ff5a1f]/8 via-white to-indigo-50"
+          className="absolute inset-0 bg-gradient-to-br from-[#ff5a1f]/8 via-white to-indigo-50 dark:from-[#ff5a1f]/12 dark:via-[#0b1220] dark:to-[#111827]"
           aria-hidden
         />
         <div className="relative flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
@@ -224,12 +213,12 @@ const PlatformDashboard: React.FC<PlatformDashboardProps> = ({
             <div className="inline-flex items-center gap-2 rounded-full bg-[#ff5a1f]/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-[#ff5a1f]">
               <Sparkles size={12} /> Platform Control Center
             </div>
-            <h2 className="mt-3 text-2xl font-bold text-gray-900 sm:text-3xl">
+            <h2 className="mt-3 text-2xl font-bold text-gray-900 sm:text-3xl dark:text-slate-100">
               Restenzo Admin
             </h2>
-            <p className="mt-1 max-w-2xl text-sm text-gray-600">
+            <p className="mt-1 max-w-2xl text-sm text-gray-600 dark:text-slate-300">
               Live SaaS visibility across every restaurant, subscription,
-              billing status and setup issue on the platform.
+              billing status and customer activity on the platform.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -239,15 +228,9 @@ const PlatformDashboard: React.FC<PlatformDashboardProps> = ({
             >
               <Store size={16} /> Manage tenants
             </Link>
-            <Link
-              href="/setup-health"
-              className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-            >
-              <Activity size={16} /> Setup health
-            </Link>
             <button
               onClick={onRefresh}
-              className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-500 hover:bg-gray-50"
+              className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-500 hover:bg-gray-50 dark:border-[#2a3a55] dark:!bg-[#111b2c] dark:text-slate-300 dark:hover:!bg-[#162238]"
               aria-label="Refresh"
             >
               <RefreshCw size={16} />
@@ -278,12 +261,12 @@ const PlatformDashboard: React.FC<PlatformDashboardProps> = ({
       {/* Mid: breakdowns + setup alerts */}
       <div className="mb-6 grid grid-cols-1 gap-6 xl:grid-cols-3">
         {/* Tenant type */}
-        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm dark:border-[#1f2a3d] dark:!bg-[#0b1220]">
           <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-800">
+            <h3 className="text-sm font-semibold text-gray-800 dark:text-slate-100">
               Tenants by type
             </h3>
-            <GitBranch size={16} className="text-gray-400" />
+            <GitBranch size={16} className="text-gray-400 dark:text-slate-500" />
           </div>
           <div className="space-y-4">
             <BarRow
@@ -314,12 +297,12 @@ const PlatformDashboard: React.FC<PlatformDashboardProps> = ({
         </div>
 
         {/* Status breakdown */}
-        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm dark:border-[#1f2a3d] dark:!bg-[#0b1220]">
           <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-800">
+            <h3 className="text-sm font-semibold text-gray-800 dark:text-slate-100">
               Tenants by status
             </h3>
-            <Activity size={16} className="text-gray-400" />
+            <AlertTriangle size={16} className="text-gray-400 dark:text-slate-500" />
           </div>
           <div className="space-y-4">
             <BarRow
@@ -357,45 +340,45 @@ const PlatformDashboard: React.FC<PlatformDashboardProps> = ({
         </div>
 
         {/* Billing overview */}
-        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm dark:border-[#1f2a3d] dark:!bg-[#0b1220]">
           <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-800">
+            <h3 className="text-sm font-semibold text-gray-800 dark:text-slate-100">
               Billing overview
             </h3>
-            <Wallet size={16} className="text-gray-400" />
+            <Wallet size={16} className="text-gray-400 dark:text-slate-500" />
           </div>
-          <p className="text-3xl font-bold text-gray-900">
+          <p className="text-3xl font-bold text-gray-900 dark:text-slate-100">
             {formatUSD(billing.mrr)}
-            <span className="ml-1 text-sm font-medium text-gray-400">
+            <span className="ml-1 text-sm font-medium text-gray-400 dark:text-slate-500">
               / mo
             </span>
           </p>
-          <p className="mt-1 text-xs text-gray-500">
+          <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
             {billing.activePayingCustomers} active paying customers ·{" "}
             {formatUSD(billing.arr)} ARR
           </p>
           <div className="mt-4 space-y-3">
             {billing.byPlan.length === 0 ? (
-              <p className="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-500">
+              <p className="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-500 dark:!bg-[#111b2c] dark:text-slate-400">
                 No paying customers yet. Revenue will appear once trials convert.
               </p>
             ) : (
               billing.byPlan.map((p) => (
                 <div
                   key={p.planId}
-                  className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-3 py-2"
+                  className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 dark:border-[#2a3a55] dark:!bg-[#111b2c]"
                 >
                   <div>
-                    <p className="text-xs font-semibold text-gray-700">
+                    <p className="text-xs font-semibold text-gray-700 dark:text-slate-200">
                       {p.planName}
                     </p>
-                    <p className="text-[11px] text-gray-500">
+                    <p className="text-[11px] text-gray-500 dark:text-slate-400">
                       {p.customers} customer{p.customers === 1 ? "" : "s"}
                     </p>
                   </div>
-                  <p className="text-sm font-semibold text-gray-800">
+                  <p className="text-sm font-semibold text-gray-800 dark:text-slate-200">
                     {formatUSD(p.mrr)}
-                    <span className="text-[11px] font-normal text-gray-400">
+                    <span className="text-[11px] font-normal text-gray-400 dark:text-slate-500">
                       /mo
                     </span>
                   </p>
@@ -414,24 +397,24 @@ const PlatformDashboard: React.FC<PlatformDashboardProps> = ({
 
       {/* Growth chart */}
       <div className="mb-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm dark:border-[#1f2a3d] dark:!bg-[#0b1220]">
           <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-800">
+            <h3 className="text-sm font-semibold text-gray-800 dark:text-slate-100">
               Restaurants created · last 6 months
             </h3>
-            <Store size={16} className="text-gray-400" />
+            <Store size={16} className="text-gray-400 dark:text-slate-500" />
           </div>
           <BarSeries
             points={data.charts.restaurantsCreated}
             tone="bg-[#ff5a1f]"
           />
         </div>
-        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm dark:border-[#1f2a3d] dark:!bg-[#0b1220]">
           <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-800">
+            <h3 className="text-sm font-semibold text-gray-800 dark:text-slate-100">
               Branches created · last 6 months
             </h3>
-            <Building2 size={16} className="text-gray-400" />
+            <Building2 size={16} className="text-gray-400 dark:text-slate-500" />
           </div>
           <BarSeries
             points={data.charts.branchesCreated}
@@ -442,14 +425,14 @@ const PlatformDashboard: React.FC<PlatformDashboardProps> = ({
 
       {/* Tables: attention + recent signups */}
       <div className="mb-6 grid grid-cols-1 gap-6 xl:grid-cols-3">
-        <div className="xl:col-span-2 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
+        <div className="xl:col-span-2 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm dark:border-[#1f2a3d] dark:!bg-[#0b1220]">
           <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
             <div>
               <h3 className="text-sm font-semibold text-gray-800">
                 Restaurants needing attention
               </h3>
               <p className="mt-0.5 text-xs text-gray-500">
-                Inactive, suspended, or incomplete setup.
+                Inactive, suspended, or billing-related issues.
               </p>
             </div>
             <Link
@@ -471,7 +454,7 @@ const PlatformDashboard: React.FC<PlatformDashboardProps> = ({
                   <th className="px-5 py-3 text-left font-semibold">
                     Subscription
                   </th>
-                  <th className="px-5 py-3 text-left font-semibold">Issue</th>
+                  <th className="px-5 py-3 text-left font-semibold">Note</th>
                 </tr>
               </thead>
               <tbody>
@@ -511,10 +494,13 @@ const PlatformDashboard: React.FC<PlatformDashboardProps> = ({
                         />
                       </td>
                       <td className="px-5 py-3 text-xs text-gray-500">
-                        {t.setupIssues[0] ??
-                          (t.status !== "Active"
-                            ? `Tenant is ${t.status.toLowerCase()}`
-                            : "")}
+                        {t.subscription.status === "Past Due"
+                          ? "Payment past due"
+                          : t.subscription.status === "Suspended"
+                            ? "Subscription suspended"
+                            : t.status !== "Active"
+                              ? `Tenant is ${t.status.toLowerCase()}`
+                              : ""}
                       </td>
                     </tr>
                   ))
@@ -525,7 +511,7 @@ const PlatformDashboard: React.FC<PlatformDashboardProps> = ({
         </div>
 
         {/* Recent signups */}
-        <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
+        <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm dark:border-[#1f2a3d] dark:!bg-[#0b1220]">
           <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
             <h3 className="text-sm font-semibold text-gray-800">
               Recent signups
@@ -566,136 +552,74 @@ const PlatformDashboard: React.FC<PlatformDashboardProps> = ({
         </div>
       </div>
 
-      {/* Latest created + setup alerts */}
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-        <div className="xl:col-span-2 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
-            <h3 className="text-sm font-semibold text-gray-800">
-              Latest created restaurants
-            </h3>
-            <Link
-              href="/restaurants"
-              className="inline-flex items-center gap-1 text-xs font-semibold text-[#ff5a1f] hover:underline"
-            >
-              View all <ArrowRight size={12} />
-            </Link>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] text-sm">
-              <thead className="bg-gray-50 text-[11px] uppercase tracking-wider text-gray-500">
+      {/* Latest created restaurants */}
+      <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm dark:border-[#1f2a3d] dark:!bg-[#0b1220]">
+        <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+          <h3 className="text-sm font-semibold text-gray-800">
+            Latest created restaurants
+          </h3>
+          <Link
+            href="/restaurants"
+            className="inline-flex items-center gap-1 text-xs font-semibold text-[#ff5a1f] hover:underline"
+          >
+            View all <ArrowRight size={12} />
+          </Link>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[720px] text-sm">
+            <thead className="bg-gray-50 text-[11px] uppercase tracking-wider text-gray-500">
+              <tr>
+                <th className="px-5 py-3 text-left font-semibold">
+                  Restaurant
+                </th>
+                <th className="px-5 py-3 text-left font-semibold">Plan</th>
+                <th className="px-5 py-3 text-left font-semibold">Owner</th>
+                <th className="px-5 py-3 text-left font-semibold">Branches</th>
+                <th className="px-5 py-3 text-left font-semibold">Created</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recentRestaurants.length === 0 ? (
                 <tr>
-                  <th className="px-5 py-3 text-left font-semibold">
-                    Restaurant
-                  </th>
-                  <th className="px-5 py-3 text-left font-semibold">Plan</th>
-                  <th className="px-5 py-3 text-left font-semibold">Owner</th>
-                  <th className="px-5 py-3 text-left font-semibold">
-                    Branches
-                  </th>
-                  <th className="px-5 py-3 text-left font-semibold">Created</th>
+                  <td
+                    colSpan={5}
+                    className="px-5 py-10 text-center text-sm text-gray-400"
+                  >
+                    No restaurants yet.
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {recentRestaurants.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={5}
-                      className="px-5 py-10 text-center text-sm text-gray-400"
-                    >
-                      No restaurants yet.
+              ) : (
+                recentRestaurants.map((t) => (
+                  <tr
+                    key={t.restaurantId}
+                    className="border-t border-gray-100 hover:bg-gray-50/70"
+                  >
+                    <td className="px-5 py-3">
+                      <p className="font-medium text-gray-900">{t.name}</p>
+                      <p className="text-[11px] text-gray-400">{t.slug}</p>
+                    </td>
+                    <td className="px-5 py-3">
+                      <StatusBadge
+                        label={t.subscription.planName}
+                        tone={t.type === "Multi Branch" ? "info" : "neutral"}
+                      />
+                    </td>
+                    <td className="px-5 py-3 text-gray-600">
+                      {t.owner?.fullName || (
+                        <span className="text-xs text-amber-600">
+                          Unassigned
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-5 py-3 text-gray-600">{t.branchCount}</td>
+                    <td className="px-5 py-3 text-xs text-gray-500">
+                      {new Date(t.createdAt).toLocaleDateString()}
                     </td>
                   </tr>
-                ) : (
-                  recentRestaurants.map((t) => (
-                    <tr
-                      key={t.restaurantId}
-                      className="border-t border-gray-100 hover:bg-gray-50/70"
-                    >
-                      <td className="px-5 py-3">
-                        <p className="font-medium text-gray-900">{t.name}</p>
-                        <p className="text-[11px] text-gray-400">{t.slug}</p>
-                      </td>
-                      <td className="px-5 py-3">
-                        <StatusBadge
-                          label={t.subscription.planName}
-                          tone={t.type === "Multi Branch" ? "info" : "neutral"}
-                        />
-                      </td>
-                      <td className="px-5 py-3 text-gray-600">
-                        {t.owner?.fullName || (
-                          <span className="text-xs text-amber-600">
-                            Unassigned
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-5 py-3 text-gray-600">
-                        {t.branchCount}
-                      </td>
-                      <td className="px-5 py-3 text-xs text-gray-500">
-                        {new Date(t.createdAt).toLocaleDateString()}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Setup alerts */}
-        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-          <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-800">
-              Setup & attention alerts
-            </h3>
-            <LifeBuoy size={16} className="text-gray-400" />
-          </div>
-          <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
-            {data.setupAlerts.length === 0 ? (
-              <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-3 text-sm text-emerald-700">
-                All restaurants are currently healthy.
-              </div>
-            ) : (
-              data.setupAlerts.slice(0, 10).map((a) => (
-                <div
-                  key={a.id}
-                  className={`rounded-xl border px-3 py-3 ${
-                    a.severity === "critical"
-                      ? "border-rose-200 bg-rose-50"
-                      : "border-amber-200 bg-amber-50"
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <p
-                      className={`text-[11px] font-semibold uppercase tracking-wide ${
-                        a.severity === "critical"
-                          ? "text-rose-700"
-                          : "text-amber-700"
-                      }`}
-                    >
-                      {a.title}
-                    </p>
-                    <Link
-                      href="/setup-health"
-                      className="text-xs text-gray-500 hover:text-gray-900"
-                      aria-label="Open setup health"
-                    >
-                      <ArrowUpRight size={12} />
-                    </Link>
-                  </div>
-                  <p
-                    className={`mt-1 text-xs ${
-                      a.severity === "critical"
-                        ? "text-rose-700"
-                        : "text-amber-700"
-                    }`}
-                  >
-                    {a.detail}
-                  </p>
-                </div>
-              ))
-            )}
-          </div>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </DashboardLayout>
@@ -717,10 +641,10 @@ function BarRow({
   return (
     <div>
       <div className="mb-1 flex items-center justify-between text-xs">
-        <span className="text-gray-600">{label}</span>
-        <span className="font-semibold text-gray-800">{value}</span>
+        <span className="text-gray-600 dark:text-slate-300">{label}</span>
+        <span className="font-semibold text-gray-800 dark:text-slate-100">{value}</span>
       </div>
-      <div className="h-2 overflow-hidden rounded-full bg-gray-100">
+      <div className="h-2 overflow-hidden rounded-full bg-gray-100 dark:!bg-[#1a263a]">
         <div
           className={`h-full rounded-full ${tone}`}
           style={{ width: `${pct}%` }}
@@ -740,14 +664,14 @@ function MiniStat({
   icon: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
-      <div className="flex items-center gap-1 text-gray-500">
+    <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2 dark:border-[#2a3a55] dark:!bg-[#111b2c]">
+      <div className="flex items-center gap-1 text-gray-500 dark:text-slate-400">
         {icon}
         <span className="truncate text-[10px] uppercase tracking-wider">
           {label}
         </span>
       </div>
-      <p className="mt-1 text-base font-semibold text-gray-900">
+      <p className="mt-1 text-base font-semibold text-gray-900 dark:text-slate-100">
         {value.toLocaleString()}
       </p>
     </div>
@@ -772,13 +696,13 @@ function BarSeries({
             className="grid grid-cols-[64px_1fr_32px] items-center gap-3"
           >
             <span className="text-xs text-gray-500">{p.label}</span>
-            <div className="h-2 overflow-hidden rounded-full bg-gray-100">
+            <div className="h-2 overflow-hidden rounded-full bg-gray-100 dark:!bg-[#1a263a]">
               <div
                 className={`h-full rounded-full ${tone}`}
                 style={{ width }}
               />
             </div>
-            <span className="text-right text-xs font-medium text-gray-700">
+            <span className="text-right text-xs font-medium text-gray-700 dark:text-slate-200">
               {p.count}
             </span>
           </div>

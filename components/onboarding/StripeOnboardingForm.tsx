@@ -54,10 +54,22 @@ const PaymentCard: React.FC<{
 
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [paymentElementReady, setPaymentElementReady] = useState(false);
+
+  const canSubmit =
+    Boolean(stripe) &&
+    Boolean(elements) &&
+    paymentElementReady &&
+    !submitting;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!stripe || !elements) return;
+    if (!stripe || !elements || !paymentElementReady) {
+      setError(
+        "Payment form is still loading. Please wait a moment and try again."
+      );
+      return;
+    }
 
     setSubmitting(true);
     setError(null);
@@ -69,7 +81,7 @@ const PaymentCard: React.FC<{
       return;
     }
 
-    const { error: confirmError } = await stripe.confirmSetup({
+    const { error: confirmError, setupIntent } = await stripe.confirmSetup({
       elements,
       confirmParams: {
         return_url: returnUrl,
@@ -86,8 +98,19 @@ const PaymentCard: React.FC<{
       return;
     }
 
-    // If `redirect: "if_required"` returns without redirecting, the card
-    // has been saved inline. Push to the confirmation step ourselves.
+    // If `redirect: "if_required"` returns without redirecting, we still
+    // need to carry the setup_intent_client_secret so success verification
+    // can reconcile activation server-side.
+    if (setupIntent?.client_secret) {
+      const successUrl = new URL(returnUrl, window.location.origin);
+      successUrl.searchParams.set(
+        "setup_intent_client_secret",
+        setupIntent.client_secret
+      );
+      router.push(`${successUrl.pathname}${successUrl.search}`);
+      return;
+    }
+
     router.push(returnUrl);
   };
 
@@ -141,6 +164,13 @@ const PaymentCard: React.FC<{
             options={{
               layout: "tabs",
             }}
+            onReady={() => {
+              setPaymentElementReady(true);
+              setError(null);
+            }}
+            onChange={() => {
+              if (!paymentElementReady) setPaymentElementReady(true);
+            }}
           />
         </div>
       </div>
@@ -157,7 +187,7 @@ const PaymentCard: React.FC<{
 
       <button
         type="submit"
-        disabled={!stripe || submitting}
+        disabled={!canSubmit}
         className="w-full inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-brand text-white font-semibold shadow-[0_20px_40px_-15px_rgba(255,90,31,0.65)] hover:-translate-y-0.5 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
       >
         {submitting ? (

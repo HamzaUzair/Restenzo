@@ -31,6 +31,12 @@ const CashierPaymentModal: React.FC<CashierPaymentModalProps> = ({
   const [gstPercent, setGstPercent] = useState<string>(String(DEFAULT_GST_PERCENT));
   const [receivedAmount, setReceivedAmount] = useState<string>("");
   const [receivedEdited, setReceivedEdited] = useState(false);
+  // Cashier-entered Card invoice / Online txn ID. Required by the
+  // backend whenever `paymentMethod` is anything other than Cash; the
+  // modal mirrors that contract so the cashier sees the requirement
+  // before submit instead of after a failed PATCH.
+  const [paymentReferenceId, setPaymentReferenceId] = useState("");
+  const [paymentReferenceTouched, setPaymentReferenceTouched] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -43,6 +49,8 @@ const CashierPaymentModal: React.FC<CashierPaymentModalProps> = ({
     setGstPercent(String(order.gstPercent ?? DEFAULT_GST_PERCENT));
     setReceivedAmount("");
     setReceivedEdited(false);
+    setPaymentReferenceId("");
+    setPaymentReferenceTouched(false);
     setError("");
   }, [order]);
 
@@ -83,6 +91,26 @@ const CashierPaymentModal: React.FC<CashierPaymentModalProps> = ({
       ? Math.max(0, receivedNumeric - finalTotal)
       : 0;
 
+  // Card / Online require a cashier-entered reference; Cash does not.
+  // Centralised here so the JSX, the disable rule and the submit guard
+  // never disagree with each other.
+  const requiresPaymentReference =
+    paymentMethod === "Card" || paymentMethod === "Online";
+  const trimmedPaymentReferenceId = paymentReferenceId.trim();
+  const paymentReferenceMissing =
+    requiresPaymentReference && trimmedPaymentReferenceId.length === 0;
+  const paymentReferenceLabel =
+    paymentMethod === "Card" ? "Card Invoice ID" : "Online Payment ID";
+  const paymentReferencePlaceholder =
+    paymentMethod === "Card"
+      ? "Enter card invoice/reference ID"
+      : "Enter online transaction/reference ID";
+  const paymentReferenceError = paymentReferenceMissing
+    ? paymentMethod === "Card"
+      ? "Payment reference ID is required for card payments."
+      : "Payment reference ID is required for online payments."
+    : "";
+
   if (!isOpen || !order) return null;
 
   const handleMarkPaid = async () => {
@@ -117,6 +145,11 @@ const CashierPaymentModal: React.FC<CashierPaymentModalProps> = ({
         return;
       }
     }
+    if (requiresPaymentReference && !trimmedPaymentReferenceId) {
+      setPaymentReferenceTouched(true);
+      setError(paymentReferenceError);
+      return;
+    }
     setSubmitting(true);
     try {
       const res = await apiFetch(`/api/orders/${order.id}`, {
@@ -129,6 +162,11 @@ const CashierPaymentModal: React.FC<CashierPaymentModalProps> = ({
           discountValue: normalizedDiscountValue,
           discountReason: discountReason.trim(),
           gstPercent: normalizedGstPercent,
+          // Only send a reference for methods that require one. The
+          // backend treats an empty / omitted value as "no reference".
+          paymentReferenceId: requiresPaymentReference
+            ? trimmedPaymentReferenceId
+            : "",
         }),
       });
       const payload = await res.json().catch(() => ({}));
@@ -156,6 +194,16 @@ const CashierPaymentModal: React.FC<CashierPaymentModalProps> = ({
         // opens right after payment shows the same value that will be
         // persisted and retrievable later from Sales List.
         billNo: typeof payload?.billNo === "string" ? payload.billNo : null,
+        // Echo the cashier-entered Card / Online reference so the
+        // Paid Receipt and Order Details modals that open right after
+        // payment can show it without an extra refetch.
+        paymentReferenceId:
+          typeof payload?.paymentReferenceId === "string" &&
+          payload.paymentReferenceId.length > 0
+            ? payload.paymentReferenceId
+            : requiresPaymentReference
+            ? trimmedPaymentReferenceId
+            : null,
       });
       onClose();
     } catch (e) {
@@ -319,7 +367,18 @@ const CashierPaymentModal: React.FC<CashierPaymentModalProps> = ({
             </label>
             <select
               value={paymentMethod}
-              onChange={(e) => setPaymentMethod(e.target.value as (typeof METHODS)[number])}
+              onChange={(e) => {
+                const next = e.target.value as (typeof METHODS)[number];
+                setPaymentMethod(next);
+                // Switching back to Cash drops the requirement entirely:
+                // clear any typed value and the touched flag so the
+                // cashier doesn't see a stale validation message.
+                if (next === "Cash") {
+                  setPaymentReferenceId("");
+                  setPaymentReferenceTouched(false);
+                  setError("");
+                }
+              }}
               className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm"
             >
               {METHODS.map((m) => (
@@ -328,6 +387,33 @@ const CashierPaymentModal: React.FC<CashierPaymentModalProps> = ({
                 </option>
               ))}
             </select>
+
+            {requiresPaymentReference && (
+              <>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  {paymentReferenceLabel}{" "}
+                  <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={paymentReferenceId}
+                  placeholder={paymentReferencePlaceholder}
+                  maxLength={100}
+                  onChange={(e) => setPaymentReferenceId(e.target.value)}
+                  onBlur={() => setPaymentReferenceTouched(true)}
+                  className={`w-full border rounded-lg px-3 py-2.5 text-sm ${
+                    paymentReferenceTouched && paymentReferenceMissing
+                      ? "border-red-400 ring-2 ring-red-100"
+                      : "border-gray-200"
+                  }`}
+                />
+                {paymentReferenceTouched && paymentReferenceMissing && (
+                  <p className="text-xs text-red-500">
+                    {paymentReferenceError}
+                  </p>
+                )}
+              </>
+            )}
 
             {paymentMethod === "Cash" && (
               <>
@@ -367,8 +453,13 @@ const CashierPaymentModal: React.FC<CashierPaymentModalProps> = ({
           </button>
           <button
             onClick={handleMarkPaid}
-            disabled={submitting}
-            className="flex-1 px-4 py-2.5 rounded-lg bg-[#ff5a1f] text-white text-sm font-semibold hover:bg-[#e04e18] disabled:opacity-60"
+            disabled={submitting || paymentReferenceMissing}
+            className="flex-1 px-4 py-2.5 rounded-lg bg-[#ff5a1f] text-white text-sm font-semibold hover:bg-[#e04e18] disabled:opacity-60 disabled:cursor-not-allowed"
+            title={
+              paymentReferenceMissing
+                ? `Enter the ${paymentReferenceLabel.toLowerCase()} to continue`
+                : undefined
+            }
           >
             {submitting ? "Processing..." : "Mark as Paid"}
           </button>

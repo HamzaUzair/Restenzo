@@ -5,6 +5,10 @@ import PricingSection from "@/components/site/pricing/PricingSection";
 import ComparisonTable from "@/components/site/pricing/ComparisonTable";
 import FAQAccordion from "@/components/site/FAQAccordion";
 import FinalCTA from "@/components/site/home/FinalCTA";
+import { getPublicPlans } from "@/lib/plans";
+
+// Always render with the latest plan data the Platform Admin has saved.
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Pricing",
@@ -39,7 +43,8 @@ const pricingFAQs = [
   },
 ];
 
-export default function PricingPage() {
+export default async function PricingPage() {
+  const plans = await getPublicPlans();
   return (
     <>
       <section className="relative overflow-hidden pt-20 pb-6 lg:pt-28">
@@ -63,7 +68,7 @@ export default function PricingPage() {
         </Container>
       </section>
 
-      <PricingSection />
+      <PricingSection plans={plans} />
       <ComparisonTable />
 
       <section className="py-20 lg:py-24 border-t border-gray-100 dark:border-white/5">

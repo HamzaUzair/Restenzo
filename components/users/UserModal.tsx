@@ -4,6 +4,10 @@ import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { X, UserCog } from "lucide-react";
 import type { AppUser, UserFormData, UserRole } from "@/types/user";
 import { USER_ROLE_LABELS } from "@/types/user";
+import {
+  validateEmailUsername,
+  validateNameWithLetters,
+} from "@/lib/user-validation";
 
 interface BranchOption {
   branch_id: number;
@@ -70,6 +74,7 @@ const UserModal: React.FC<UserModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     if (editUser) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setForm({
         username: editUser.username,
         fullName: editUser.fullName,
@@ -126,6 +131,7 @@ const UserModal: React.FC<UserModalProps> = ({
   /* Reset incompatible fields whenever role changes */
   useEffect(() => {
     if (isSuperAdminRole) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setForm((p) => ({ ...p, restaurantId: "", branchId: "" }));
     } else if (isRestaurantAdminRole) {
       setForm((p) => ({ ...p, branchId: "" }));
@@ -144,11 +150,11 @@ const UserModal: React.FC<UserModalProps> = ({
 
   const validate = (): boolean => {
     const errs: Partial<Record<keyof UserFormData, string>> = {};
-    if (!form.username.trim()) errs.username = "Username is required.";
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.username.trim()))
-      errs.username = "Please enter a valid email address.";
+    const usernameError = validateEmailUsername(form.username);
+    if (usernameError) errs.username = usernameError;
 
-    if (!form.fullName.trim()) errs.fullName = "Full name is required.";
+    const fullNameError = validateNameWithLetters(form.fullName);
+    if (fullNameError) errs.fullName = fullNameError;
 
     if (!isEdit) {
       if (!form.password) errs.password = "Password is required.";
@@ -213,7 +219,7 @@ const UserModal: React.FC<UserModalProps> = ({
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
           <div>
             <label className={labelBase}>
-              Username <span className="text-red-400">*</span>
+              Username (Email) <span className="text-red-400">*</span>
             </label>
             <input
               type="email"

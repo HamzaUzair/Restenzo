@@ -22,7 +22,6 @@ import {
   Store,
   CreditCard,
   Package,
-  Activity,
   LifeBuoy,
   X,
 } from "lucide-react";
@@ -46,7 +45,6 @@ const superAdminMenu: SidebarItem[] = [
   { label: "Subscriptions", icon: <CreditCard size={20} />, href: "/subscriptions" },
   { label: "Plans", icon: <Package size={20} />, href: "/plans" },
   { label: "Billing", icon: <Wallet size={20} />, href: "/billing" },
-  { label: "Setup Health", icon: <Activity size={20} />, href: "/setup-health" },
   { label: "Support", icon: <LifeBuoy size={20} />, href: "/support" },
 ];
 

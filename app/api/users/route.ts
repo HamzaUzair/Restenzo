@@ -7,6 +7,10 @@ import {
   requireAuth,
   resolveDefaultBranchForSingleBranch,
 } from "@/lib/server-auth";
+import {
+  validateEmailUsername,
+  validateNameWithLetters,
+} from "@/lib/user-validation";
 
 type ApiUserRole =
   | "SUPER_ADMIN"
@@ -172,6 +176,16 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    const usernameError = validateEmailUsername(username);
+    if (usernameError) {
+      return NextResponse.json({ error: usernameError }, { status: 400 });
+    }
+    const fullNameError = validateNameWithLetters(fullName);
+    if (fullNameError) {
+      return NextResponse.json({ error: fullNameError }, { status: 400 });
+    }
+
     if (
       !canManageRole(auth.role, role, auth.restaurantHasMultipleBranches)
     ) {

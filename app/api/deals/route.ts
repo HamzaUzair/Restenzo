@@ -6,30 +6,67 @@ import {
   buildBranchScopeFilter,
   requireAuth,
 } from "@/lib/server-auth";
+import {
+  buildDealItemData,
+  dealLineDisplayName,
+  normalizeDealLines,
+  type IncomingDealLine,
+} from "@/lib/deal-line";
 import type { Prisma } from "@prisma/client";
 
-type IncomingDealItem = {
-  id?: string;
-  name?: string;
-  quantity?: number;
-};
+/** Serialize a deal (with items) into the UI/API shape. */
+type DealWithItems = Prisma.DealGetPayload<{
+  include: {
+    branch: { select: { branch_id: true; branch_name: true } };
+    items: {
+      include: {
+        menu_item: { select: { dish_id: true; name: true } };
+        variation: { select: { id: true; name: true } };
+      };
+    };
+  };
+}>;
 
-/**
- * Deals reference existing `menu_items.dish_id`. With the merged catalog there
- * is a single canonical row per menu item, so we just validate that the id is
- * a live active item in the requested branch.
- */
-async function getDishForMenu(branchId: number, menuId: number) {
-  const item = await prisma.menuItem.findFirst({
-    where: {
-      dish_id: menuId,
-      branch_id: branchId,
-      status: "ACTIVE",
-    },
-    select: { dish_id: true, name: true },
-  });
-  return item;
+function serializeDeal(d: DealWithItems) {
+  return {
+    id: String(d.id),
+    name: d.name,
+    type: d.discount_type,
+    description: d.description,
+    branchId: d.branch_id ?? 0,
+    branchName: d.branch?.branch_name ?? "All Branches",
+    price: Number(d.discount_value),
+    status: d.status === "Active" ? "active" : "inactive",
+    items: d.items.map((item) => {
+      const itemName = item.item_name_snapshot ?? item.menu_item.name;
+      const variationName =
+        item.variation_name_snapshot ?? item.variation?.name ?? null;
+      return {
+        lineId: String(item.id),
+        id: String(item.dish_id),
+        name: dealLineDisplayName(itemName, variationName),
+        itemName,
+        variationId: item.variation_id ?? null,
+        variationName,
+        unitPrice:
+          item.unit_price_snapshot != null
+            ? Number(item.unit_price_snapshot)
+            : undefined,
+        quantity: item.quantity,
+      };
+    }),
+  };
 }
+
+const dealItemInclude = {
+  branch: { select: { branch_id: true, branch_name: true } },
+  items: {
+    include: {
+      menu_item: { select: { dish_id: true, name: true } },
+      variation: { select: { id: true, name: true } },
+    },
+  },
+} as const;
 
 /* ── GET /api/deals ── */
 export async function GET(request: NextRequest) {
@@ -55,38 +92,11 @@ export async function GET(request: NextRequest) {
 
     const deals = await prisma.deal.findMany({
       where,
-      include: {
-        branch: {
-          select: { branch_id: true, branch_name: true },
-        },
-        items: {
-          include: {
-            menu_item: {
-              select: { dish_id: true, name: true },
-            },
-          },
-        },
-      },
+      include: dealItemInclude,
       orderBy: { created_at: "desc" },
     });
 
-    const serialized = deals.map((d) => ({
-      id: String(d.id),
-      name: d.name,
-      type: d.discount_type,
-      description: d.description,
-      branchId: d.branch_id ?? 0,
-      branchName: d.branch?.branch_name ?? "All Branches",
-      price: Number(d.discount_value),
-      status: d.status === "Active" ? "active" : "inactive",
-      items: d.items.map((item) => ({
-        id: String(item.dish_id),
-        name: item.menu_item.name,
-        quantity: item.quantity,
-      })),
-    }));
-
-    return NextResponse.json(serialized);
+    return NextResponse.json(deals.map(serializeDeal));
   } catch (err) {
     if (err instanceof AuthError) {
       return NextResponse.json({ error: err.message }, { status: err.status });
@@ -114,7 +124,7 @@ export async function POST(request: NextRequest) {
       branchId?: number | string;
       price?: number | string;
       status?: "active" | "inactive";
-      items?: IncomingDealItem[];
+      items?: IncomingDealLine[];
     };
 
     if (!name?.trim()) {
@@ -153,22 +163,15 @@ export async function POST(request: NextRequest) {
     }
     await assertBranchWriteAccess(auth, branch.branch_id);
 
-    const normalizedItems = items
-      .map((item) => ({
-        id: Number(item.id),
-        name: item.name?.trim() ?? "",
-        quantity: Math.max(1, Number(item.quantity) || 1),
-      }))
-      .filter((item) => !Number.isNaN(item.id) && item.name.length > 0);
-
-    if (normalizedItems.length === 0) {
+    const normalizedLines = normalizeDealLines(items);
+    if (normalizedLines.length === 0) {
       return NextResponse.json(
-        { error: "Invalid deal items payload" },
+        { error: "Select at least one included menu item" },
         { status: 400 }
       );
     }
 
-    const deal = await prisma.$transaction(async (tx) => {
+    const dealId = await prisma.$transaction(async (tx) => {
       const created = await tx.deal.create({
         data: {
           branch_id: branchIdNum,
@@ -180,51 +183,32 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      for (const item of normalizedItems) {
-        const dish = await getDishForMenu(branchIdNum, item.id);
-        if (!dish) continue;
-
-        await tx.dealItem.create({
-          data: {
-            deal_id: created.id,
-            dish_id: dish.dish_id,
-            quantity: item.quantity,
-          },
-        });
+      const rows: Prisma.DealItemCreateManyInput[] = [];
+      for (const line of normalizedLines) {
+        const data = await buildDealItemData(tx, branchIdNum, line);
+        if (data) rows.push({ ...data, deal_id: created.id });
       }
+      if (rows.length === 0) {
+        // Every line resolved to an invalid/inactive item or variation.
+        throw new AuthError(
+          "Select at least one valid active menu item or variation",
+          400
+        );
+      }
+      await tx.dealItem.createMany({ data: rows });
 
       return created.id;
     });
 
     const created = await prisma.deal.findUnique({
-      where: { id: deal },
-      include: {
-        branch: { select: { branch_id: true, branch_name: true } },
-        items: { include: { menu_item: { select: { dish_id: true, name: true } } } },
-      },
+      where: { id: dealId },
+      include: dealItemInclude,
     });
     if (!created) {
       return NextResponse.json({ error: "Failed to create deal" }, { status: 500 });
     }
 
-    return NextResponse.json(
-      {
-        id: String(created.id),
-        name: created.name,
-        type: created.discount_type,
-        description: created.description,
-        branchId: created.branch_id ?? 0,
-        branchName: created.branch?.branch_name ?? "All Branches",
-        price: Number(created.discount_value),
-        status: created.status === "Active" ? "active" : "inactive",
-        items: created.items.map((item) => ({
-          id: String(item.dish_id),
-          name: item.menu_item.name,
-          quantity: item.quantity,
-        })),
-      },
-      { status: 201 }
-    );
+    return NextResponse.json(serializeDeal(created), { status: 201 });
   } catch (err) {
     if (err instanceof AuthError) {
       return NextResponse.json({ error: err.message }, { status: err.status });

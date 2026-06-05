@@ -34,6 +34,11 @@ export interface SaleOrder {
   status: SaleStatus;
   paymentMethod: PaymentMethod;
   paid: boolean;
+  /**
+   * Cashier-entered Card invoice / Online transaction ID. Null for
+   * Cash payments and for legacy paid rows that predate this field.
+   */
+  paymentReferenceId?: string | null;
   createdAt: number;    // epoch ms
   items: SaleItem[];
 }
