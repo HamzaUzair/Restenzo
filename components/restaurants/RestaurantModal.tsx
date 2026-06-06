@@ -208,7 +208,7 @@ const RestaurantModal: React.FC<RestaurantModalProps> = ({
                 <input
                   type="text"
                   className={`${inputBase} ${errors.name ? "border-red-400" : ""}`}
-                  placeholder="e.g. Chai Khas"
+                  placeholder="e.g. Restenzo Bistro"
                   value={form.name}
                   onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
                 />
@@ -223,7 +223,7 @@ const RestaurantModal: React.FC<RestaurantModalProps> = ({
                 <input
                   type="text"
                   className={`${inputBase} ${errors.slug ? "border-red-400" : ""}`}
-                  placeholder="e.g. chai-khas"
+                  placeholder="e.g. restenzo-bistro"
                   value={form.slug}
                   onChange={(e) => setForm((p) => ({ ...p, slug: e.target.value }))}
                 />
@@ -382,7 +382,7 @@ const RestaurantModal: React.FC<RestaurantModalProps> = ({
                 <input
                   type="email"
                   className={`${inputBase} ${errors.admin_username ? "border-red-400" : ""}`}
-                  placeholder="e.g. ali@chaikhas.com"
+                  placeholder="e.g. ali@restenzo.com"
                   value={form.admin_username ?? ""}
                   onChange={(e) =>
                     setForm((p) => ({ ...p, admin_username: e.target.value }))

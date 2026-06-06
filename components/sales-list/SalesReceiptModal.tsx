@@ -65,7 +65,7 @@ const SalesReceiptModal: React.FC<SalesReceiptModalProps> = ({ order, onClose })
               <UtensilsCrossed size={22} className="text-[#ff5a1f]" />
             </div>
             <h3 className="text-lg font-bold text-gray-800">Restaurant Receipt</h3>
-            <p className="text-xs text-gray-400">Chai Khas POS</p>
+            <p className="text-xs text-gray-400">Restenzo POS</p>
           </div>
 
           {/* Meta */}
