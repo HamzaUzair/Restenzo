@@ -12,6 +12,7 @@ import {
   type TopSellingItemRow,
 } from "@/lib/topSellingItems";
 import { BOOKED_SALES_STATUSES } from "@/lib/order-revenue";
+import { toNumber } from "@/lib/decimal";
 
 /**
  * SaaS drilldown analytics endpoint.
@@ -57,12 +58,6 @@ function resolveDateRange(range: string | null) {
       break;
   }
   return { from, to, label: range ?? "7days" };
-}
-
-function toNumber(v: Prisma.Decimal | number | null | undefined): number {
-  if (v === null || v === undefined) return 0;
-  if (typeof v === "number") return v;
-  return Number(v.toString());
 }
 
 /**

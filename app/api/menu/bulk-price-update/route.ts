@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
+import { Decimal } from "@/lib/decimal";
 import { prisma } from "@/lib/prisma";
 import {
   assertBranchWriteAccess,
@@ -155,7 +156,7 @@ export async function POST(request: NextRequest) {
               if (newVarPrice !== oldVarPrice) {
                 await tx.menuVariation.update({
                   where: { id: variation.id },
-                  data: { price: new Prisma.Decimal(newVarPrice) },
+                  data: { price: new Decimal(newVarPrice) },
                 });
                 updatedPricesCount += 1;
               }
@@ -176,7 +177,7 @@ export async function POST(request: NextRequest) {
           if (newDisplay !== oldDisplay) {
             await tx.menuItem.update({
               where: { dish_id: item.dish_id },
-              data: { price: new Prisma.Decimal(newDisplay) },
+              data: { price: new Decimal(newDisplay) },
             });
           }
 
@@ -195,8 +196,8 @@ export async function POST(request: NextRequest) {
             await tx.menuItem.update({
               where: { dish_id: item.dish_id },
               data: {
-                base_price: new Prisma.Decimal(newBase),
-                price: new Prisma.Decimal(newBase),
+                base_price: new Decimal(newBase),
+                price: new Decimal(newBase),
               },
             });
             updatedPricesCount += 1;

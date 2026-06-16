@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
+import { Decimal } from "@/lib/decimal";
 import { prisma } from "@/lib/prisma";
 import {
   AuthError,
@@ -119,8 +120,8 @@ export async function PUT(
       data: {
         name: normalized.name,
         description: normalized.description || null,
-        monthly_price: new Prisma.Decimal(normalized.monthlyPrice),
-        yearly_price: new Prisma.Decimal(normalized.yearlyPrice),
+        monthly_price: new Decimal(normalized.monthlyPrice),
+        yearly_price: new Decimal(normalized.yearlyPrice),
         currency: normalized.currency,
         billing_label: normalized.billingLabel || null,
         cta_label: normalized.ctaLabel || null,

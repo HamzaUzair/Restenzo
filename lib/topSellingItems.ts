@@ -1,5 +1,6 @@
-import { Prisma } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { Decimal, toNumber } from "@/lib/decimal";
 
 /**
  * One row in either of the two top-selling lists. Both fields are populated
@@ -44,12 +45,6 @@ export interface TopSellingItemsParams {
   orderStatuses?: string[];
   /** How many rows each list should contain. Defaults to 5. */
   limit?: number;
-}
-
-function toNumber(v: Prisma.Decimal | number | null | undefined): number {
-  if (v === null || v === undefined) return 0;
-  if (typeof v === "number") return v;
-  return Number(v.toString());
 }
 
 /**
@@ -131,7 +126,7 @@ export async function getTopSellingItems(
 
   const toRow = (r: {
     dish_id: number;
-    _sum: { quantity: Prisma.Decimal | null; total_amount: Prisma.Decimal | null };
+    _sum: { quantity: Decimal | null; total_amount: Decimal | null };
   }): TopSellingItemRow => {
     const d = dishMap.get(r.dish_id);
     const name = d?.name ?? `Item #${r.dish_id}`;

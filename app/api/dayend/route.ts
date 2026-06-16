@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
+import { Decimal } from "@/lib/decimal";
 import { prisma } from "@/lib/prisma";
 import {
   AuthError,
@@ -468,13 +469,13 @@ export async function POST(request: NextRequest) {
       data: {
         branch_id: requestedBranchId,
         business_date: businessDate,
-        total_cash: new Prisma.Decimal(totals.Cash),
-        total_bank: new Prisma.Decimal(totals.Card),
-        total_easypaisa: new Prisma.Decimal(totals.Online),
-        credit_sales: new Prisma.Decimal(totals.Credit),
-        total_sales: new Prisma.Decimal(totalSales),
-        total_expenses: new Prisma.Decimal(totalExpenses),
-        closing_balance: new Prisma.Decimal(netRevenue),
+        total_cash: new Decimal(totals.Cash),
+        total_bank: new Decimal(totals.Card),
+        total_easypaisa: new Decimal(totals.Online),
+        credit_sales: new Decimal(totals.Credit),
+        total_sales: new Decimal(totalSales),
+        total_expenses: new Decimal(totalExpenses),
+        closing_balance: new Decimal(netRevenue),
         total_orders: booked.length,
         cancelled_orders: cancelled.length,
         closing_by: auth.id,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
+import { Decimal } from "@/lib/decimal";
 import { prisma } from "@/lib/prisma";
 import {
   assertBranchWriteAccess,
@@ -49,8 +50,8 @@ type SerializableMenuItem = {
   dish_id: number;
   name: string;
   description: string | null;
-  price: Prisma.Decimal | number | string;
-  base_price: Prisma.Decimal | number | string | null;
+  price: Decimal | number | string;
+  base_price: Decimal | number | string | null;
   has_variations: boolean;
   status: "ACTIVE" | "INACTIVE";
   branch_id: number;
@@ -59,7 +60,7 @@ type SerializableMenuItem = {
   variations: Array<{
     id: number;
     name: string;
-    price: Prisma.Decimal | number | string;
+    price: Decimal | number | string;
     sortOrder: number;
   }>;
   created_at: Date;

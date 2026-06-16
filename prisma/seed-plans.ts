@@ -6,7 +6,8 @@
  * `create` missing plans and never overwrite an existing row's editable
  * fields). Run with: `npm run seed:plans`.
  */
-import { PrismaClient, Prisma } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
+import { Decimal } from "../lib/decimal";
 import { PLANS } from "../lib/pricing";
 
 const prisma = new PrismaClient();
@@ -35,8 +36,8 @@ async function main() {
         slug: p.id,
         name: p.name,
         description: p.tagline,
-        monthly_price: new Prisma.Decimal(p.monthly),
-        yearly_price: new Prisma.Decimal(p.yearly),
+        monthly_price: new Decimal(p.monthly),
+        yearly_price: new Decimal(p.yearly),
         currency: p.currency,
         billing_label: "/mo",
         cta_label: p.cta,

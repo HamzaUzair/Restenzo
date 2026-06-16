@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
+import { Decimal } from "@/lib/decimal";
 import { prisma } from "@/lib/prisma";
 import {
   AuthError,
@@ -151,7 +152,7 @@ export async function PUT(
     const updateData: Prisma.ExpenseUncheckedUpdateInput = {
       title,
       description: description || null,
-      amount: new Prisma.Decimal(amount),
+      amount: new Decimal(amount),
       branch_id: branchId,
       expenseCategoryId: category.id,
       payment_method: paymentMethod,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
+import { Decimal } from "@/lib/decimal";
 import { prisma } from "@/lib/prisma";
 import {
   AuthError,
@@ -328,9 +329,9 @@ export async function PATCH(
         ...(isCashierTransition
           ? {
               payment_mode: paymentMethod,
-              discount_amount: new Prisma.Decimal(discountAmount),
-              service_charge: new Prisma.Decimal(serviceChargeAmount),
-              net_total_amount: new Prisma.Decimal(finalTotal),
+              discount_amount: new Decimal(discountAmount),
+              service_charge: new Decimal(serviceChargeAmount),
+              net_total_amount: new Decimal(finalTotal),
               comments: commentsWithMeta,
             }
           : {}),
@@ -367,7 +368,7 @@ export async function PATCH(
         data: {
           order_id: updated.order_id,
           branch_id: existing.branch_id,
-          amount: new Prisma.Decimal(updated.net_total_amount),
+          amount: new Decimal(updated.net_total_amount),
           method:
             paymentMethod === "Cash"
               ? "CASH"

@@ -1,4 +1,5 @@
-import { Prisma } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
+import { Decimal } from "@/lib/decimal";
 
 /**
  * Shared helpers for resolving and persisting deal lines.
@@ -100,7 +101,7 @@ export async function buildDealItemData(
     dish_id: dish.dish_id,
     variation_id: line.variationId,
     quantity: line.quantity,
-    unit_price_snapshot: new Prisma.Decimal(unitPrice),
+    unit_price_snapshot: new Decimal(unitPrice),
     item_name_snapshot: dish.name,
     variation_name_snapshot: variationName,
   };
