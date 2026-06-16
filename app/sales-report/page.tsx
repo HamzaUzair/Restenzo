@@ -18,6 +18,7 @@ import AccountingBreakdown from "@/components/sales-report/AccountingBreakdown";
 import DailySummaryTable from "@/components/sales-report/DailySummaryTable";
 import DailySummaryCards from "@/components/sales-report/DailySummaryCards";
 import { downloadReportCsv } from "@/lib/exportReportCsv";
+import { exportSalesReportPdf } from "@/lib/pdf/export-sales-report";
 import type {
   ReportOrder,
   ReportKPIs,
@@ -97,7 +98,6 @@ export default function SalesReportPage() {
   const [dateFrom, setDateFrom] = useState(toISO(startOfMonth()));
   const [dateTo, setDateTo] = useState(toISO(new Date()));
   const [branchId, setBranchId] = useState<number | "all">("all");
-  const [includeCancelled, setIncludeCancelled] = useState(false);
 
   /* ── Sort ── */
   const [sortField, setSortField] = useState<SortField | null>(null);
@@ -187,12 +187,11 @@ export default function SalesReportPage() {
   const clearFilters = useCallback(() => {
     handleTimeRange("this_month");
     setBranchId(lockedBranchId ?? "all");
-    setIncludeCancelled(false);
     setSortField(null);
   }, [handleTimeRange, lockedBranchId]);
 
   const hasActive =
-    (!lockedBranchId && branchId !== "all") || includeCancelled || timeRange !== "this_month";
+    (!lockedBranchId && branchId !== "all") || timeRange !== "this_month";
 
   useEffect(() => {
     if (!authorized) return;
@@ -205,7 +204,7 @@ export default function SalesReportPage() {
         if (branchId !== "all") params.set("branchId", String(branchId));
         if (dateFrom) params.set("dateFrom", dateFrom);
         if (dateTo) params.set("dateTo", dateTo);
-        params.set("includeCancelled", includeCancelled ? "true" : "false");
+        params.set("includeCancelled", "false");
 
         const res = await apiFetch(`/api/reports/sales-report?${params.toString()}`);
         if (!res.ok) throw new Error("Failed to fetch report");
@@ -254,7 +253,7 @@ export default function SalesReportPage() {
     return () => {
       cancelled = true;
     };
-  }, [authorized, branchId, dateFrom, dateTo, includeCancelled, pushToast, refreshTick]);
+  }, [authorized, branchId, dateFrom, dateTo, pushToast, refreshTick]);
 
   const sortedDailyRows = useMemo(() => {
     const rows = [...dailyRows];
@@ -283,8 +282,23 @@ export default function SalesReportPage() {
     pushToast(`Exported ${sortedDailyRows.length} daily rows to CSV`);
   };
   const handleExportPdf = () => {
-    window.print();
-    pushToast("Print dialog opened");
+    const session = getAuthSession();
+    const branchLabel =
+      branchId === "all"
+        ? "All"
+        : branches.find((b) => b.id === branchId)?.name ?? String(branchId);
+    exportSalesReportPdf({
+      session,
+      filters: {
+        branchLabel,
+        dateRange: `${dateFrom} → ${dateTo}`,
+        includeCancelled: false,
+      },
+      kpis,
+      orders,
+      dailyRows: sortedDailyRows,
+    });
+    pushToast("PDF exported!", "success");
   };
   const handleRefresh = () => {
     setRefreshTick((p) => p + 1);
@@ -331,7 +345,7 @@ export default function SalesReportPage() {
           <div>
             <h2 className="text-2xl font-bold text-gray-800">Sales Report</h2>
             <p className="text-sm text-gray-500 mt-1">
-              Financial Summary — accounting report for totals and payments
+              Financial Summary accounting report for totals and payments
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0 flex-wrap">
@@ -373,8 +387,6 @@ export default function SalesReportPage() {
         branchId={branchId}
         onBranchChange={setBranchId}
         lockBranchId={lockedBranchId}
-        includeCancelled={includeCancelled}
-        onIncludeCancelledChange={setIncludeCancelled}
         onClear={clearFilters}
         hasActive={hasActive}
       />

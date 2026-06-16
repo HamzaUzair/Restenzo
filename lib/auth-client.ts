@@ -94,7 +94,11 @@ export function getRestaurantAdminAllowedPaths(
 }
 
 export const STAFF_ALLOWED_PATHS = new Set(["/dashboard"]);
-export const ORDER_TAKER_ALLOWED_PATHS = new Set(["/create-order", "/order-deals"]);
+export const ORDER_TAKER_ALLOWED_PATHS = new Set([
+  "/create-order",
+  "/order-deals",
+  "/orders",
+]);
 export const LIVE_KITCHEN_ALLOWED_PATHS = new Set(["/kitchen"]);
 /**
  * Routes visible in the Accountant finance/reporting panel. The Accountant

@@ -11,7 +11,6 @@ import {
   Lock,
   Mail,
   ShieldCheck,
-  Sparkles,
   Zap,
 } from "lucide-react";
 import Logo from "@/components/site/Logo";
@@ -168,8 +167,7 @@ function LoginInner() {
         </div>
 
         <div className="relative max-w-md">
-          <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 text-white text-xs font-semibold tracking-wide">
-            <Sparkles className="h-3 w-3" />
+          <span className="inline-flex items-center px-3 py-1 rounded-full bg-white/15 text-white text-xs font-semibold tracking-wide">
             Welcome back
           </span>
           <h1 className="mt-5 text-4xl xl:text-5xl font-extrabold tracking-tight leading-[1.08]">

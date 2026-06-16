@@ -27,6 +27,12 @@ export const EXPENSE_PAYMENT_METHODS: ExpensePaymentMethod[] = [
   "Online",
 ];
 
+export function expenseRequiresInvoice(
+  method: ExpensePaymentMethod | ""
+): boolean {
+  return method === "Card" || method === "Online";
+}
+
 export interface Expense {
   id: number;
   title: string;
@@ -37,6 +43,8 @@ export interface Expense {
   branchName: string;
   amount: number;
   paymentMethod: ExpensePaymentMethod;
+  /** Required for Card / Online payments */
+  invoiceNo: string | null;
   date: string; // YYYY-MM-DD
   addedBy: string;
   createdAt: number; // epoch ms
@@ -59,6 +67,8 @@ export interface ExpenseFormData {
   branchId: number | "";
   amount: string; // string for input
   paymentMethod: ExpensePaymentMethod | "";
+  /** Required when paymentMethod is Card or Online */
+  invoiceNo: string;
   date: string;
 }
 

@@ -3,7 +3,6 @@ import Link from "next/link";
 import {
   ArrowRight,
   CheckCircle2,
-  Sparkles,
   ShieldCheck,
   Zap,
 } from "lucide-react";
@@ -29,9 +28,8 @@ const Hero: React.FC = () => {
       <Container>
         <div className="flex flex-col items-center text-center max-w-4xl mx-auto">
           <span
-            className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-[#ff5a1f]/25 bg-[#ff5a1f]/10 text-[#ff5a1f] text-xs font-semibold tracking-wide animate-[fadeInDown_0.8s_ease-out_both]"
+            className="inline-flex items-center px-3.5 py-1.5 rounded-full border border-[#ff5a1f]/25 bg-[#ff5a1f]/10 text-[#ff5a1f] text-xs font-semibold tracking-wide animate-[fadeInDown_0.8s_ease-out_both]"
           >
-            <Sparkles className="h-3.5 w-3.5" />
             Restaurant Operations, Reimagined
           </span>
 

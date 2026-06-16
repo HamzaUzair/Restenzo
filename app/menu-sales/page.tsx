@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { FileDown, Printer, RefreshCw, PieChart, Loader2, XCircle } from "lucide-react";
+import { FileDown, FileText, RefreshCw, PieChart, Loader2, XCircle } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import MenuSalesFilters from "@/components/menu-sales/MenuSalesFilters";
 import MenuSalesKPIStrip from "@/components/menu-sales/MenuSalesKPIStrip";
@@ -13,6 +13,7 @@ import type { ItemPerformance, MSTimeRange, MSSortField, MSSortDir, MSBranch } f
 import { downloadMenuSalesCsv } from "@/lib/exportMenuSalesCsv";
 import type { Branch } from "@/types/branch";
 import { apiFetch, getAuthSession, getEffectiveBranchId } from "@/lib/auth-client";
+import { exportMenuSalesReportPdf } from "@/lib/pdf/export-menu-sales-report";
 
 /* ── date helpers ── */
 function todayRange(): [string, string] {
@@ -92,7 +93,6 @@ export default function MenuSalesPage() {
   const [categories, setCategories] = useState<string[]>([]);
   const [category, setCategory] = useState<string | "all">("all");
   const [search, setSearch] = useState("");
-  const [activeOnly, setActiveOnly] = useState(true);
   const [loadingRows, setLoadingRows] = useState(false);
 
   /* ── sorting ── */
@@ -147,7 +147,7 @@ export default function MenuSalesPage() {
         if (dateFrom) params.set("dateFrom", dateFrom);
         if (dateTo) params.set("dateTo", dateTo);
         if (search.trim()) params.set("search", search.trim());
-        params.set("activeOnly", activeOnly ? "true" : "false");
+        params.set("activeOnly", "true");
 
         const res = await apiFetch(`/api/reports/menu-sales?${params.toString()}`);
         if (!res.ok) throw new Error("Failed to fetch menu sales");
@@ -183,7 +183,6 @@ export default function MenuSalesPage() {
     dateFrom,
     dateTo,
     search,
-    activeOnly,
     refreshTick,
     showToast,
   ]);
@@ -222,7 +221,6 @@ export default function MenuSalesPage() {
     setBranchId(lockedBranchId ?? "all");
     setCategory("all");
     setSearch("");
-    setActiveOnly(true);
     setSortField("soldQty");
     setSortDir("desc");
     showToast("Filters cleared!");
@@ -233,7 +231,6 @@ export default function MenuSalesPage() {
     (!lockedBranchId && branchId !== "all") ||
     category !== "all" ||
     search !== "" ||
-    !activeOnly ||
     timeRange !== "this_month";
 
   /* ── filter description line ── */
@@ -242,9 +239,8 @@ export default function MenuSalesPage() {
     if (branchId !== "all") parts.push(`Branch: ${branches.find((b) => b.id === branchId)?.name ?? branchId}`);
     if (category !== "all") parts.push(`Category: ${category}`);
     if (search) parts.push(`Search: "${search}"`);
-    if (!activeOnly) parts.push("Including Inactive");
     return parts;
-  }, [branchId, category, search, activeOnly, branches]);
+  }, [branchId, category, search, branches]);
 
   /* ── loading guard ── */
   if (!authorized) {
@@ -263,7 +259,7 @@ export default function MenuSalesPage() {
           <div>
             <h2 className="text-2xl font-bold text-gray-800">Menu Sales</h2>
             <p className="text-sm text-gray-500 mt-1">
-              Item Performance — exact quantities and revenue (not charts-only)
+              Item Performance exact quantities and revenue (not charts-only)
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -279,12 +275,27 @@ export default function MenuSalesPage() {
             </button>
             <button
               onClick={() => {
-                window.print();
-                showToast("Opening print dialog…");
+                const session = getAuthSession();
+                const branchLabel =
+                  branchId === "all"
+                    ? "All"
+                    : branches.find((b) => b.id === branchId)?.name ?? String(branchId);
+                exportMenuSalesReportPdf({
+                  session,
+                  rows: sortedRows,
+                  filters: {
+                    branchLabel,
+                    dateRange: `${dateFrom} → ${dateTo}`,
+                    category: category === "all" ? "All" : category,
+                    search: search.trim(),
+                    activeOnly: true,
+                  },
+                });
+                showToast("PDF exported!", "success");
               }}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm font-semibold hover:bg-gray-200 transition-colors cursor-pointer shadow-sm"
             >
-              <Printer size={16} />
+              <FileText size={16} />
               Export PDF
             </button>
             <button
@@ -318,8 +329,6 @@ export default function MenuSalesPage() {
         onCategoryChange={setCategory}
         search={search}
         onSearchChange={setSearch}
-        activeOnly={activeOnly}
-        onActiveOnlyChange={setActiveOnly}
         onClear={handleClear}
         hasActive={hasActiveFilter}
       />

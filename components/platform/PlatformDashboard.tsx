@@ -9,7 +9,6 @@ import {
   GitBranch,
   ShieldCheck,
   AlertTriangle,
-  Sparkles,
   DollarSign,
   Clock3,
   ArrowRight,
@@ -210,8 +209,8 @@ const PlatformDashboard: React.FC<PlatformDashboardProps> = ({
         />
         <div className="relative flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full bg-[#ff5a1f]/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-[#ff5a1f]">
-              <Sparkles size={12} /> Platform Control Center
+            <div className="inline-flex items-center rounded-full bg-[#ff5a1f]/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-[#ff5a1f]">
+              Platform Control Center
             </div>
             <h2 className="mt-3 text-2xl font-bold text-gray-900 sm:text-3xl dark:text-slate-100">
               Restenzo Admin

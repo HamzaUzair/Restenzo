@@ -11,6 +11,7 @@ import {
   getTopSellingItems,
   type TopSellingItemRow,
 } from "@/lib/topSellingItems";
+import { BOOKED_SALES_STATUSES } from "@/lib/order-revenue";
 
 /**
  * SaaS drilldown analytics endpoint.
@@ -158,19 +159,20 @@ export async function GET(request: NextRequest) {
       orderWhere.restaurant_id = scopedRestaurantId;
     }
 
-    const [orderAgg, orderCount] = await Promise.all([
-      prisma.order.aggregate({
-        where: orderWhere,
-        _sum: { net_total_amount: true },
-        _avg: { net_total_amount: true },
-      }),
-      prisma.order.count({ where: orderWhere }),
-    ]);
+    const bookedOrderAgg = await prisma.order.aggregate({
+      where: {
+        ...orderWhere,
+        order_status: { in: [...BOOKED_SALES_STATUSES] },
+      },
+      _sum: { net_total_amount: true },
+      _avg: { net_total_amount: true },
+      _count: { _all: true },
+    });
 
     const kpis = {
-      totalSales: toNumber(orderAgg._sum.net_total_amount),
-      totalOrders: orderCount,
-      avgOrderValue: toNumber(orderAgg._avg.net_total_amount),
+      totalSales: toNumber(bookedOrderAgg._sum.net_total_amount),
+      totalOrders: bookedOrderAgg._count._all,
+      avgOrderValue: toNumber(bookedOrderAgg._avg.net_total_amount),
     };
 
     if (level === "platform") {
@@ -191,7 +193,10 @@ export async function GET(request: NextRequest) {
 
       const restaurantStats = await prisma.order.groupBy({
         by: ["restaurant_id"],
-        where: { created_at: { gte: from, lte: to } },
+        where: {
+          created_at: { gte: from, lte: to },
+          order_status: { in: [...BOOKED_SALES_STATUSES] },
+        },
         _sum: { net_total_amount: true },
         _count: { _all: true },
       });
@@ -259,6 +264,7 @@ export async function GET(request: NextRequest) {
         where: {
           restaurant_id: scopedRestaurantId,
           created_at: { gte: from, lte: to },
+          order_status: { in: [...BOOKED_SALES_STATUSES] },
         },
         _sum: { net_total_amount: true },
         _count: { _all: true },
@@ -331,6 +337,7 @@ export async function GET(request: NextRequest) {
           startDate: from,
           endDate: to,
           limit: 5,
+          orderStatuses: [...BOOKED_SALES_STATUSES],
         });
         topSellingByQuantity = lists.byQuantity;
         topSellingBySales = lists.bySales;
@@ -405,6 +412,7 @@ export async function GET(request: NextRequest) {
           startDate: from,
           endDate: to,
           limit: 5,
+          orderStatuses: [...BOOKED_SALES_STATUSES],
         }),
       ]);
 

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { AuthError, requireAuth, requireSuperAdmin } from "@/lib/server-auth";
 import { generateUniqueBranchCode } from "@/lib/branch-code";
 import { seedDefaultCategoriesForBranch } from "@/lib/seedDefaultCategories";
+import { hashPassword } from "@/lib/password";
 
 function slugify(input: string) {
   return String(input)
@@ -202,7 +203,7 @@ export async function POST(request: NextRequest) {
         await tx.user.create({
           data: {
             username: adminUsername,
-            password: adminPassword,
+            password: await hashPassword(adminPassword),
             fullname: adminFullName,
             role: "RESTAURANT_ADMIN",
             restaurant_id: restaurant.restaurant_id,

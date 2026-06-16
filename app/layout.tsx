@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Restenzo — Modern Restaurant Management SaaS",
-    template: "%s · Restenzo",
+    default: "Restenzo",
+    template: "%s Restenzo",
   },
   description:
     "Restenzo is an all-in-one restaurant management platform for single and multi-branch restaurants. Take orders, manage kitchens, run reports and scale your operations with ease.",

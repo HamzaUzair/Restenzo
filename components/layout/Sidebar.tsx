@@ -26,6 +26,7 @@ import {
   X,
 } from "lucide-react";
 import { getAuthSession } from "@/lib/auth-client";
+import Logo from "@/components/site/Logo";
 
 interface SidebarItem {
   label: string;
@@ -95,6 +96,7 @@ const branchAdminMenu: SidebarItem[] = [
 /* ══════════════ Order Taker limited menu ══════════════ */
 const orderTakerMenu: SidebarItem[] = [
   { label: "New Order / POS", icon: <ClipboardList size={20} />, href: "/create-order" },
+  { label: "Orders", icon: <ClipboardList size={20} />, href: "/orders" },
   { label: "Deals", icon: <BadgePercent size={20} />, href: "/order-deals" },
 ];
 
@@ -228,13 +230,17 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
         }`}
       >
         <div className="h-16 flex items-center justify-between px-5 border-b border-gray-100 shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-[#ff5a1f] flex items-center justify-center">
-              <UtensilsCrossed size={18} className="text-white" />
-            </div>
-            <span className="text-lg font-bold text-[#ff5a1f] tracking-wide">
-              {panelLabel}
-            </span>
+          <div className="flex items-center gap-3 min-w-0">
+            {role === "SUPER_ADMIN" ? (
+              <Logo href="/dashboard" size="sm" />
+            ) : (
+              <>
+                <Logo href="" size="sm" showText={false} />
+                <span className="text-lg font-bold text-[#ff5a1f] tracking-wide truncate">
+                  {panelLabel}
+                </span>
+              </>
+            )}
           </div>
           <button
             onClick={onClose}
@@ -317,7 +323,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
 
         <div className="px-5 py-4 border-t border-gray-100 shrink-0">
           <p className="text-[11px] text-gray-400 text-center">
-            © 2024 Restenzo
+            © 2026 Restenzo
           </p>
         </div>
       </aside>

@@ -41,7 +41,7 @@ function fmtDate(ts: number) {
 }
 
 function fmtPkr(n: number) {
-  return "PKR " + n.toLocaleString("en-PK");
+  return "PKR " + n.toLocaleString("en-PK", { maximumFractionDigits: 0 });
 }
 
 interface SalesTableProps {

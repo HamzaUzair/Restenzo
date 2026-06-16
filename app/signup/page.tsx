@@ -17,7 +17,6 @@ import {
   EyeOff,
   Lock,
   Mail,
-  Sparkles,
   Store,
   User,
   Utensils,
@@ -26,6 +25,10 @@ import Logo from "@/components/site/Logo";
 import ThemeToggle from "@/components/theme/ThemeToggle";
 import SiteBodyClass from "@/components/site/SiteBodyClass";
 import { PLANS, YEARLY_DISCOUNT_PERCENT, type BillingCycle } from "@/lib/pricing";
+import {
+  validateEmailUsername,
+  validateNameWithLetters,
+} from "@/lib/user-validation";
 import type { PublicPlan } from "@/types/plan";
 
 type PlanId = "single" | "multi" | "enterprise";
@@ -124,6 +127,27 @@ function SignUpInner() {
     e.preventDefault();
     setError("");
     setResumeToken(null);
+
+    const fullNameError = validateNameWithLetters(fullName);
+    if (fullNameError) {
+      setError(fullNameError);
+      return;
+    }
+
+    const restaurantNameError = validateNameWithLetters(
+      restaurantName,
+      "Restaurant name"
+    );
+    if (restaurantNameError) {
+      setError(restaurantNameError);
+      return;
+    }
+
+    const emailError = validateEmailUsername(email, "Work email");
+    if (emailError) {
+      setError(emailError);
+      return;
+    }
 
     if (password.length < 8) {
       setError("Password must be at least 8 characters.");
@@ -273,8 +297,7 @@ function SignUpInner() {
         <div className="flex-1 flex items-center py-10">
           <div className="w-full max-w-xl">
             <div className="animate-[fadeInUp_0.6s_ease-out_both]">
-              <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-[#ff5a1f]/25 bg-[#ff5a1f]/10 text-[#ff5a1f] text-xs font-semibold tracking-wide">
-                <Sparkles className="h-3 w-3" />
+              <span className="inline-flex items-center px-3 py-1 rounded-full border border-[#ff5a1f]/25 bg-[#ff5a1f]/10 text-[#ff5a1f] text-xs font-semibold tracking-wide">
                 14 day free trial · Billing starts after trial
               </span>
               <h1 className="mt-5 text-3xl sm:text-4xl font-extrabold tracking-tight text-gray-900 dark:text-white">
@@ -632,8 +655,7 @@ function SignUpInner() {
               </p>
               <p className="mt-1 text-sm text-gray-500">{selectedPlan.description}</p>
             </div>
-            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#ff5a1f]/10 text-[#ff5a1f] text-[11px] font-bold">
-              <Sparkles className="h-3 w-3" />
+            <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-[#ff5a1f]/10 text-[#ff5a1f] text-[11px] font-bold">
               {cycle === "yearly" ? "Yearly" : "Monthly"}
             </span>
           </div>

@@ -1,7 +1,7 @@
  "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { ChevronDown, X } from "lucide-react";
+import { ChevronDown, Search, X } from "lucide-react";
  import type { Branch } from "@/types/branch";
  import type { Deal, DealFormData, DealFormDataItem } from "@/types/deal";
 import { apiFetch } from "@/lib/auth-client";
@@ -84,6 +84,7 @@ import { apiFetch } from "@/lib/auth-client";
   const [loadingMenuOptions, setLoadingMenuOptions] = useState(false);
   const [menuOptionsError, setMenuOptionsError] = useState("");
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
+  const [menuItemSearch, setMenuItemSearch] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
    const isEditing = !!editDeal;
@@ -120,7 +121,12 @@ import { apiFetch } from "@/lib/auth-client";
        });
      }
      setErrors({});
+     setMenuItemSearch("");
   }, [isOpen, editDeal, branches, lockedBranchId]);
+
+  useEffect(() => {
+    setMenuItemSearch("");
+  }, [form.branchId]);
 
   // A deal line is uniquely identified by its dish id + chosen variation id
   // (or "base" for a plain, no-variation item).
@@ -311,6 +317,47 @@ import { apiFetch } from "@/lib/auth-client";
     setExpandedCategories((prev) => ({ ...prev, [category]: !prev[category] }));
   };
 
+  const menuItemMatchesSearch = (item: MenuOption, query: string) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    if (item.name.toLowerCase().includes(q)) return true;
+    if (item.category.toLowerCase().includes(q)) return true;
+    if (item.hasVariations) {
+      return item.variations.some((v) => v.name.toLowerCase().includes(q));
+    }
+    return false;
+  };
+
+  const filterItemVariations = (item: MenuOption, query: string): MenuOption => {
+    const q = query.trim().toLowerCase();
+    if (!q || !item.hasVariations) return item;
+    if (item.name.toLowerCase().includes(q) || item.category.toLowerCase().includes(q)) {
+      return item;
+    }
+    return {
+      ...item,
+      variations: item.variations.filter((v) => v.name.toLowerCase().includes(q)),
+    };
+  };
+
+  const filteredMenuGroups = useMemo(() => {
+    const q = menuItemSearch.trim();
+    if (!q) return menuGroups;
+    return menuGroups
+      .map((group) => ({
+        ...group,
+        items: group.items
+          .filter((item) => menuItemMatchesSearch(item, q))
+          .map((item) => filterItemVariations(item, q)),
+      }))
+      .filter((group) => group.items.length > 0);
+  }, [menuGroups, menuItemSearch]);
+
+  const isCategoryExpanded = (category: string) => {
+    if (menuItemSearch.trim()) return true;
+    return expandedCategories[category] ?? true;
+  };
+
   // Regular (a-la-carte) total of the selected lines — shown next to the deal
   // price so the admin can see the saving the deal represents.
   const regularTotal = useMemo(
@@ -496,6 +543,21 @@ import { apiFetch } from "@/lib/auth-client";
                 Active items only, grouped by category
                </span>
              </div>
+            {typeof form.branchId === "number" && !loadingMenuOptions && !menuOptionsError && menuGroups.length > 0 && (
+              <div className="relative mb-2">
+                <Search
+                  size={16}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+                />
+                <input
+                  type="text"
+                  className="w-full border border-gray-200 rounded-lg pl-9 pr-3.5 py-2 text-sm text-gray-700 placeholder-gray-400 bg-white focus:outline-none focus:ring-2 focus:ring-[#ff5a1f]/30 focus:border-[#ff5a1f] transition-all"
+                  placeholder="Search menu items by name, category, or variation…"
+                  value={menuItemSearch}
+                  onChange={(e) => setMenuItemSearch(e.target.value)}
+                />
+              </div>
+            )}
             <div className="max-h-80 overflow-y-auto rounded-lg border border-gray-100 bg-gray-50/60 p-3 space-y-2">
               {typeof form.branchId !== "number" ? (
                 <div className="text-sm text-gray-500 bg-white rounded-lg border border-dashed border-gray-200 px-3 py-3">
@@ -513,8 +575,12 @@ import { apiFetch } from "@/lib/auth-client";
                 <div className="text-sm text-gray-500 bg-white rounded-lg border border-dashed border-gray-200 px-3 py-3">
                   No active menu items found for the selected branch.
                 </div>
+              ) : filteredMenuGroups.length === 0 ? (
+                <div className="text-sm text-gray-500 bg-white rounded-lg border border-dashed border-gray-200 px-3 py-3">
+                  No menu items match &ldquo;{menuItemSearch.trim()}&rdquo;.
+                </div>
               ) : (
-                menuGroups.map((group) => (
+                filteredMenuGroups.map((group) => (
                   <div key={group.category} className="rounded-lg border border-gray-200 bg-white">
                     <button
                       type="button"
@@ -530,12 +596,12 @@ import { apiFetch } from "@/lib/auth-client";
                       <ChevronDown
                         size={16}
                         className={`text-gray-400 transition-transform ${
-                          expandedCategories[group.category] ? "rotate-180" : ""
+                          isCategoryExpanded(group.category) ? "rotate-180" : ""
                         }`}
                       />
                     </button>
 
-                    {expandedCategories[group.category] && (
+                    {isCategoryExpanded(group.category) && (
                       <div className="border-t border-gray-100 px-3 py-2 space-y-2">
                         {group.items.map((item) => {
                           const hasVars =

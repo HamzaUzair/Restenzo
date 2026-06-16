@@ -75,3 +75,16 @@ export const ORDER_STATUSES: OrderStatus[] = [
   "Credit",
   "Cancelled",
 ];
+
+/** Status chips shown in the orders / cashier toolbar (Credit excluded). */
+export const ORDER_STATUS_FILTER_OPTIONS: OrderStatus[] = ORDER_STATUSES.filter(
+  (s) => s !== "Credit"
+);
+
+/** Status chips for Order Taker (no Paid / Credit). */
+export const ORDER_TAKER_STATUS_FILTER_OPTIONS: OrderStatus[] = [
+  "Pending",
+  "Running",
+  "Served",
+  "Cancelled",
+];

@@ -8,7 +8,7 @@ import type {
   ExpensePaymentMethod,
   ExpenseBranch,
 } from "@/types/expense";
-import { EXPENSE_CATEGORIES, EXPENSE_PAYMENT_METHODS } from "@/types/expense";
+import { EXPENSE_CATEGORIES, EXPENSE_PAYMENT_METHODS, expenseRequiresInvoice } from "@/types/expense";
 
 function localDateISO(): string {
   // Local calendar date (YYYY-MM-DD) — avoids UTC-today bug for users east of
@@ -25,6 +25,7 @@ const emptyForm: ExpenseFormData = {
   branchId: "",
   amount: "",
   paymentMethod: "",
+  invoiceNo: "",
   date: localDateISO(),
 };
 
@@ -69,6 +70,7 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({
         branchId: editExpense.branchId,
         amount: String(editExpense.amount),
         paymentMethod: editExpense.paymentMethod,
+        invoiceNo: editExpense.invoiceNo ?? "",
         date: editExpense.date,
       });
     } else {
@@ -109,6 +111,9 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({
     if (!form.branchId) errs.branchId = "Branch is required";
     if (!form.amount || Number(form.amount) <= 0) errs.amount = "Valid amount is required";
     if (!form.paymentMethod) errs.paymentMethod = "Payment method is required";
+    if (expenseRequiresInvoice(form.paymentMethod) && !form.invoiceNo.trim()) {
+      errs.invoiceNo = "Invoice number is required for Card and Online payments";
+    }
     if (!form.date) errs.date = "Date is required";
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -252,7 +257,20 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({
               <select
                 className={selectBase}
                 value={form.paymentMethod}
-                onChange={(e) => update("paymentMethod", e.target.value)}
+                onChange={(e) => {
+                  const method = e.target.value as ExpensePaymentMethod | "";
+                  setForm((p) => ({
+                    ...p,
+                    paymentMethod: method,
+                    invoiceNo: expenseRequiresInvoice(method) ? p.invoiceNo : "",
+                  }));
+                  setErrors((p) => {
+                    const next = { ...p };
+                    delete next.paymentMethod;
+                    if (!expenseRequiresInvoice(method)) delete next.invoiceNo;
+                    return next;
+                  });
+                }}
               >
                 <option value="">Select method</option>
                 {EXPENSE_PAYMENT_METHODS.map((m) => (
@@ -266,6 +284,24 @@ const ExpenseModal: React.FC<ExpenseModalProps> = ({
               )}
             </div>
           </div>
+
+          {expenseRequiresInvoice(form.paymentMethod) && (
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Invoice No <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                className={inputBase}
+                placeholder="e.g. POS invoice or transaction ID"
+                value={form.invoiceNo}
+                onChange={(e) => update("invoiceNo", e.target.value)}
+              />
+              {errors.invoiceNo && (
+                <p className="text-[11px] text-red-500 mt-1">{errors.invoiceNo}</p>
+              )}
+            </div>
+          )}
 
           {/* Date */}
           <div>

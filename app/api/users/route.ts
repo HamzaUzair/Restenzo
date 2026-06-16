@@ -11,6 +11,7 @@ import {
   validateEmailUsername,
   validateNameWithLetters,
 } from "@/lib/user-validation";
+import { hashPassword } from "@/lib/password";
 
 type ApiUserRole =
   | "SUPER_ADMIN"
@@ -293,7 +294,7 @@ export async function POST(request: NextRequest) {
       data: {
         username,
         fullname: fullName,
-        password,
+        password: await hashPassword(password),
         role,
         restaurant_id: restaurantId,
         branch_id: branchId,

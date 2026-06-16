@@ -15,6 +15,7 @@ import {
   requireAuth,
 } from "@/lib/server-auth";
 import type { Prisma } from "@prisma/client";
+import { isBookedSalesStatus } from "@/lib/order-revenue";
 
 /* ── GET /api/stats/dashboard ──
  *   - SUPER_ADMIN: optional ?restaurantId or ?branchId, otherwise platform-wide
@@ -380,12 +381,14 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    const todaySales = todayOrders.reduce(
+    const todayBooked = todayOrders.filter((o) => isBookedSalesStatus(o.order_status));
+    const todaySales = todayBooked.reduce(
       (sum, o) => sum + Number(o.net_total_amount || 0),
       0
     );
     const ordersToday = todayOrders.length;
-    const avgOrderValue = ordersToday > 0 ? Math.round(todaySales / ordersToday) : 0;
+    const avgOrderValue =
+      todayBooked.length > 0 ? Math.round(todaySales / todayBooked.length) : 0;
 
     /* ── 2. Counts ── */
     const [totalBranches, menuItemsCount] = await Promise.all([
@@ -400,7 +403,7 @@ export async function GET(request: NextRequest) {
     /* ── 4. Sales last 7 days ── */
     const ordersLast7 = await prisma.order.findMany({
       where: { created_at: { gte: sevenDaysAgo, lte: todayEnd }, ...opScope },
-      select: { created_at: true, net_total_amount: true },
+      select: { created_at: true, net_total_amount: true, order_status: true },
     });
 
     const salesByDate: Record<string, number> = {};
@@ -411,7 +414,7 @@ export async function GET(request: NextRequest) {
     }
     ordersLast7.forEach((o) => {
       const key = format(new Date(o.created_at), "yyyy-MM-dd");
-      if (salesByDate[key] !== undefined) {
+      if (salesByDate[key] !== undefined && isBookedSalesStatus(o.order_status)) {
         salesByDate[key] += Number(o.net_total_amount || 0);
       }
     });
@@ -432,12 +435,15 @@ export async function GET(request: NextRequest) {
       const branchOrders = todayOrders.filter((o) => o.branch_id === b.branch_id);
       const running = branchOrders.filter((o) => o.order_status === "Running").length;
       const completed = branchOrders.filter((o) => o.order_status !== "Running").length;
-      const sales = branchOrders.reduce(
+      const bookedBranchOrders = branchOrders.filter((o) =>
+        isBookedSalesStatus(o.order_status)
+      );
+      const sales = bookedBranchOrders.reduce(
         (sum, o) => sum + Number(o.net_total_amount || 0),
         0
       );
       const count = branchOrders.length;
-      const aov = count > 0 ? Math.round(sales / count) : 0;
+      const aov = bookedBranchOrders.length > 0 ? Math.round(sales / bookedBranchOrders.length) : 0;
       return {
         branchId: b.branch_id,
         branchName: b.branch_name,
@@ -450,7 +456,7 @@ export async function GET(request: NextRequest) {
     });
 
     /* ── 6. Top selling items today ── */
-    const orderIdsToday = todayOrders.map((o) => o.order_id);
+    const orderIdsToday = todayBooked.map((o) => o.order_id);
     const orderItemsToday =
       orderIdsToday.length > 0
         ? await prisma.orderItem.findMany({

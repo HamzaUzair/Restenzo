@@ -9,7 +9,7 @@ const channels = [
   {
     icon: Mail,
     title: "Email Us",
-    value: "hello@restenzo.com",
+    value: "recteenoshorts@gmail.com",
     desc: "Our team replies within one business day.",
   },
   {

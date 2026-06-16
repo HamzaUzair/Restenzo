@@ -11,7 +11,7 @@ interface SalesSummaryCardsProps {
 }
 
 function fmtPkr(n: number) {
-  return "PKR " + n.toLocaleString("en-PK");
+  return "PKR " + n.toLocaleString("en-PK", { maximumFractionDigits: 0 });
 }
 
 const SalesSummaryCards: React.FC<SalesSummaryCardsProps> = ({

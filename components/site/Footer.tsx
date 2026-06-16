@@ -68,7 +68,7 @@ const Footer: React.FC = () => {
             <ul className="mt-6 space-y-2.5 text-sm text-gray-600 dark:text-gray-400">
               <li className="flex items-center gap-2.5">
                 <Mail className="h-4 w-4 text-[#ff5a1f]" />
-                hello@restenzo.com
+                recteenoshorts@gmail.com
               </li>
               <li className="flex items-center gap-2.5">
                 <Phone className="h-4 w-4 text-[#ff5a1f]" />

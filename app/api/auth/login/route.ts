@@ -6,6 +6,11 @@ import {
   resolveDefaultBranchForSingleBranch,
 } from "@/lib/server-auth";
 import { issueOnboardingResumeToken } from "@/lib/onboarding-resume";
+import {
+  hashPassword,
+  upgradePasswordHashIfNeeded,
+  verifyPassword,
+} from "@/lib/password";
 
 const DEFAULT_SUPER_ADMIN_USERNAME = "sdmain@gmail.com";
 const DEFAULT_SUPER_ADMIN_PASSWORD = "Asdf0010";
@@ -48,7 +53,7 @@ export async function POST(request: NextRequest) {
       user = await prisma.user.create({
         data: {
           username: DEFAULT_SUPER_ADMIN_USERNAME,
-          password: DEFAULT_SUPER_ADMIN_PASSWORD,
+          password: await hashPassword(DEFAULT_SUPER_ADMIN_PASSWORD),
           fullname: "Platform Admin",
           role: "SUPER_ADMIN",
           status: "Active",
@@ -68,9 +73,15 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    if (!user || user.password !== password) {
+    if (!user) {
       return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
     }
+
+    const passwordValid = await verifyPassword(password, user.password);
+    if (!passwordValid) {
+      return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
+    }
+    await upgradePasswordHashIfNeeded(user.id, password, user.password);
     if (
       user.status !== "Active" &&
       user.role === "RESTAURANT_ADMIN" &&

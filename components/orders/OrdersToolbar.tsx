@@ -4,7 +4,7 @@ import React from "react";
 import { Search, Building2, Filter } from "lucide-react";
 import type { Branch } from "@/types/branch";
 import type { OrderStatus } from "@/types/order";
-import { ORDER_STATUSES } from "@/types/order";
+import { ORDER_STATUS_FILTER_OPTIONS } from "@/types/order";
 
 interface OrdersToolbarProps {
   branches: Branch[];
@@ -19,6 +19,8 @@ interface OrdersToolbarProps {
   statusCounts: Record<string, number>;
   totalCount: number;
   branchLocked?: boolean;
+  /** When set, overrides the default status chip list (e.g. Order Taker). */
+  statusOptions?: OrderStatus[];
 }
 
 const STATUS_COLORS: Record<string, { active: string; inactive: string }> = {
@@ -42,10 +44,6 @@ const STATUS_COLORS: Record<string, { active: string; inactive: string }> = {
     active: "bg-purple-500 text-white border-purple-500",
     inactive: "bg-white text-purple-600 border-purple-200 hover:bg-purple-50",
   },
-  Credit: {
-    active: "bg-gray-600 text-white border-gray-600",
-    inactive: "bg-white text-gray-600 border-gray-200 hover:bg-gray-50",
-  },
   Cancelled: {
     active: "bg-red-500 text-white border-red-500",
     inactive: "bg-white text-red-600 border-red-200 hover:bg-red-50",
@@ -64,6 +62,7 @@ const OrdersToolbar: React.FC<OrdersToolbarProps> = ({
   statusCounts,
   totalCount,
   branchLocked = false,
+  statusOptions,
 }) => (
   <div className="space-y-4 mb-6">
     {/* Row 1: Search + Branch */}
@@ -123,7 +122,7 @@ const OrdersToolbar: React.FC<OrdersToolbarProps> = ({
         <span className="text-xs text-gray-400 font-medium mr-1">Filter by Status:</span>
 
         {/* "all" chip */}
-        {(["all", ...ORDER_STATUSES] as (OrderStatus | "all")[]).map((s) => {
+        {(["all", ...(statusOptions ?? ORDER_STATUS_FILTER_OPTIONS)] as (OrderStatus | "all")[]).map((s) => {
           const isSelected = statusFilter === s;
           const colors =
             STATUS_COLORS[s] ?? STATUS_COLORS["all"];

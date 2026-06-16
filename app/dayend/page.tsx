@@ -16,7 +16,6 @@ import PaymentBreakdown from "@/components/dayend/PaymentBreakdown";
 import ExpenseSummary from "@/components/dayend/ExpenseSummary";
 import NetCalculation from "@/components/dayend/NetCalculation";
 import TopSellingItems from "@/components/dayend/TopSellingItems";
-import HourlySales from "@/components/dayend/HourlySales";
 import CloseDayModal from "@/components/dayend/CloseDayModal";
 import DayEndHistoryTable from "@/components/dayend/DayEndHistoryTable";
 import type { Branch } from "@/types/branch";
@@ -26,7 +25,6 @@ import type {
   PaymentBreakdown as PaymentBreakdownType,
   ExpenseEntry,
   TopSellingItem,
-  HourlySales as HourlySalesType,
   DayEndRecord,
   DayEndResponse,
 } from "@/types/dayend";
@@ -83,7 +81,6 @@ export default function DayEndPage() {
   const [topItems, setTopItems] = useState<TopSellingItem[]>([]);
   const [topItemsByQuantity, setTopItemsByQuantity] = useState<TopSellingItem[]>([]);
   const [topItemsBySales, setTopItemsBySales] = useState<TopSellingItem[]>([]);
-  const [hourlySales, setHourlySales] = useState<HourlySalesType[]>([]);
   const [history, setHistory] = useState<DayEndRecord[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
   const [historyLoading, setHistoryLoading] = useState(true);
@@ -181,7 +178,6 @@ export default function DayEndPage() {
         setTopItems([]);
         setTopItemsByQuantity([]);
         setTopItemsBySales([]);
-        setHourlySales([]);
         return;
       }
       const data = (await res.json()) as DayEndResponse;
@@ -196,7 +192,6 @@ export default function DayEndPage() {
       // leave one empty by accident.
       setTopItemsByQuantity(data.topItemsByQuantity ?? data.topItems);
       setTopItemsBySales(data.topItemsBySales ?? data.topItems);
-      setHourlySales(data.hourlySales);
     } catch {
       showToast("Failed to load day end data", "error");
     } finally {
@@ -329,13 +324,6 @@ export default function DayEndPage() {
         `${i + 1},${csvEscape(t.name)},${csvEscape(t.category ?? "")},${t.quantity},${t.revenue}`
       );
     });
-    lines.push("");
-    lines.push("Hourly Sales");
-    lines.push("Hour,Orders,Revenue");
-    for (const h of hourlySales) {
-      lines.push(`${csvEscape(h.hour)},${h.orders},${h.revenue}`);
-    }
-
     const blob = new Blob([lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -361,7 +349,6 @@ export default function DayEndPage() {
 
   const hasBranch = !!effectiveBranchId && !!summary;
   const isDayClosed = summary?.status === "closed";
-  const maxHourlyRevenue = Math.max(...hourlySales.map((h) => h.revenue), 1);
 
   /* ── Loading ── */
   if (!authorized) {
@@ -460,15 +447,10 @@ export default function DayEndPage() {
           </div>
 
           {/* Top Selling Items — split into two ranked cards (by quantity
-              + by sales) on its own row so the Hourly Sales chart never
-              has to compete for horizontal space below. */}
+              + by sales) on its own row. */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
             <TopSellingItems variant="quantity" items={topItemsByQuantity} />
             <TopSellingItems variant="sales" items={topItemsBySales} />
-          </div>
-
-          <div className="mb-6">
-            <HourlySales data={hourlySales} maxRevenue={maxHourlyRevenue} />
           </div>
 
           <div className="mb-6">

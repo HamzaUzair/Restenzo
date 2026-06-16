@@ -10,7 +10,7 @@ import Testimonials from "@/components/site/home/Testimonials";
 import FinalCTA from "@/components/site/home/FinalCTA";
 
 export const metadata: Metadata = {
-  title: "Restenzo",
+  title: { absolute: "Restenzo" },
   description:
     "Restenzo is the all in one restaurant management platform for single and multi branch restaurants orders, live kitchen, cashier, multi branch, expenses, day end and analytics. Built for modern restaurants.",
 };

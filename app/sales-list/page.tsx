@@ -23,6 +23,8 @@ import { downloadCsv } from "@/lib/exportCsv";
 import type { SaleOrder, SaleStatus, PaymentMethod, SortField, SortDir, SaleBranch } from "@/types/salesList";
 import type { Branch } from "@/types/branch";
 import { apiFetch, getAuthSession, getEffectiveBranchId } from "@/lib/auth-client";
+import { isBookedSalesStatus } from "@/lib/order-revenue";
+import { exportOrdersReportPdf } from "@/lib/pdf/export-orders-report";
 
 /* ── toast ── */
 interface Toast {
@@ -250,10 +252,11 @@ export default function SalesListPage() {
   }, [orders, sortField, sortDir]);
 
   /* ── Summary stats ── */
-  const totalOrders = filtered.length;
-  const totalRevenue = filtered.reduce((s, o) => s + o.total, 0);
-  const cashCount = filtered.filter((o) => o.paymentMethod === "Cash").length;
-  const cardOnlineCount = filtered.filter(
+  const bookedOrders = filtered.filter((o) => isBookedSalesStatus(o.status));
+  const totalOrders = bookedOrders.length;
+  const totalRevenue = bookedOrders.reduce((s, o) => s + o.total, 0);
+  const cashCount = bookedOrders.filter((o) => o.paymentMethod === "Cash").length;
+  const cardOnlineCount = bookedOrders.filter(
     (o) => o.paymentMethod === "Card" || o.paymentMethod === "Online"
   ).length;
 
@@ -273,8 +276,32 @@ export default function SalesListPage() {
     pushToast(`Exported ${filtered.length} orders to CSV`, "info");
   };
   const handleExportPdf = () => {
-    window.print();
-    pushToast("Print dialog opened", "info");
+    const session = getAuthSession();
+    const branchLabel =
+      branchId === "all"
+        ? "All"
+        : branches.find((b) => b.id === branchId)?.name ?? String(branchId);
+    exportOrdersReportPdf({
+      session,
+      orders: filtered.map((o) => ({
+        orderNo: o.orderNo,
+        branchName: o.branchName,
+        createdAt: o.createdAt,
+        type: o.type,
+        paymentMethod: o.paymentMethod,
+        paid: o.paid,
+        status: o.status,
+        total: o.total,
+      })),
+      filters: {
+        branchLabel,
+        search: search.trim(),
+        status: status === "all" ? "All" : status,
+        paymentMethod: payment === "all" ? "All" : payment,
+        dateRange: `${dateFrom} → ${dateTo}`,
+      },
+    });
+    pushToast("PDF exported!", "success");
   };
 
   /* ── Refresh ── */
@@ -331,7 +358,7 @@ export default function SalesListPage() {
           <div>
             <h2 className="text-2xl font-bold text-gray-800">Sales List</h2>
             <p className="text-sm text-gray-500 mt-1">
-              Transaction Log — view every individual order (raw database viewer)
+              Transaction Log view every individual order (raw database viewer)
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0 flex-wrap">

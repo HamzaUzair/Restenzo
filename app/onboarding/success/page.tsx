@@ -10,7 +10,7 @@
 import React, { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { CheckCircle2, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowRight, CheckCircle2, ShieldCheck } from "lucide-react";
 import Logo from "@/components/site/Logo";
 import SiteBodyClass from "@/components/site/SiteBodyClass";
 import ThemeToggle from "@/components/theme/ThemeToggle";
@@ -261,7 +261,7 @@ function SuccessInner() {
                   href={loginHref}
                   className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-gradient-brand text-white font-semibold shadow-[0_20px_40px_-15px_rgba(255,90,31,0.65)] hover:-translate-y-0.5 transition-all"
                 >
-                  <Sparkles className="h-4 w-4" />
+                  <ArrowRight className="h-4 w-4" />
                   Sign in to your portal
                 </Link>
               ) : (
@@ -270,7 +270,7 @@ function SuccessInner() {
                   disabled
                   className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-gray-200 text-gray-500 font-semibold cursor-not-allowed dark:bg-white/10 dark:text-gray-400"
                 >
-                  <Sparkles className="h-4 w-4" />
+                  <ArrowRight className="h-4 w-4" />
                   Sign in to your portal
                 </button>
               )}

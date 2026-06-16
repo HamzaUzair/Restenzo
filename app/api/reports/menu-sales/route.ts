@@ -67,6 +67,9 @@ export async function GET(request: NextRequest) {
             lte: currentTo,
           },
         },
+        // Prevent "PKR 0" rows (deal components) from entering Menu Sales.
+        // Deal bundle rows carry real totals; component rows are saved with total_amount=0.
+        total_amount: { gt: 0 },
         menu_item: menuItemWhere,
       },
       select: {
@@ -99,6 +102,7 @@ export async function GET(request: NextRequest) {
             lte: previousTo,
           },
         },
+        total_amount: { gt: 0 },
         menu_item: menuItemWhere,
       },
       select: {

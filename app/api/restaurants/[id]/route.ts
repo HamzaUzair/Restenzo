@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { AuthError, requireAuth, requireSuperAdmin } from "@/lib/server-auth";
 import { seedDefaultCategoriesForBranch } from "@/lib/seedDefaultCategories";
+import { hashPassword } from "@/lib/password";
 
 function slugify(input: string) {
   return String(input)
@@ -45,7 +46,6 @@ export async function GET(
             id: true,
             username: true,
             fullname: true,
-            password: true,
             status: true,
           },
         },
@@ -63,16 +63,12 @@ export async function GET(
       status: u.status,
     }));
 
-    // Surface the primary admin credentials to the Super Admin edit modal.
-    // Passwords are stored in plain text in the User model today (see the
-    // login route), so we can safely return them here for the platform owner.
     const primary = restaurant.users[0] ?? null;
     const primary_admin = primary
       ? {
           user_id: primary.id,
           username: primary.username,
           full_name: primary.fullname ?? "",
-          password: primary.password,
           status: primary.status,
         }
       : null;
@@ -224,6 +220,10 @@ export async function PUT(
       }
     }
 
+    const hashedAdminPassword = adminPassword
+      ? await hashPassword(adminPassword)
+      : null;
+
     const result = await prisma.$transaction(async (tx) => {
       const updatedRestaurant = await tx.restaurant.update({
         where: { restaurant_id: restaurantId },
@@ -300,7 +300,7 @@ export async function PUT(
             data: {
               ...(adminUsername ? { username: adminUsername } : {}),
               ...(adminFullName ? { fullname: adminFullName } : {}),
-              ...(adminPassword ? { password: adminPassword } : {}),
+              ...(hashedAdminPassword ? { password: hashedAdminPassword } : {}),
             },
           });
         } else {
@@ -321,7 +321,7 @@ export async function PUT(
           await tx.user.create({
             data: {
               username: adminUsername,
-              password: adminPassword,
+              password: hashedAdminPassword!,
               fullname: adminFullName,
               role: "RESTAURANT_ADMIN",
               status: "Active",

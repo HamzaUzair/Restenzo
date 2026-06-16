@@ -5,7 +5,7 @@ import {
   Package,
   Users,
   Check,
-  Sparkles,
+  BadgeCheck,
   RefreshCw,
   TrendingUp,
   X,
@@ -115,7 +115,7 @@ export default function PlansPage() {
         <StatCard
           label="Active Plans"
           value={plans.filter((p) => p.isActive && !p.isCustom).length.toString()}
-          icon={<Sparkles size={18} />}
+          icon={<BadgeCheck size={18} />}
           tint="text-emerald-700 bg-emerald-100"
           hint="Paid + active"
         />

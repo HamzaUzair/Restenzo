@@ -6,8 +6,6 @@ import {
   Building2,
   CalendarDays,
   XCircle,
-  ToggleLeft,
-  ToggleRight,
   Loader2,
   AlertTriangle,
 } from "lucide-react";
@@ -25,8 +23,6 @@ interface ReportFiltersProps {
   branchId: number | "all";
   onBranchChange: (v: number | "all") => void;
   lockBranchId?: number | null;
-  includeCancelled: boolean;
-  onIncludeCancelledChange: (v: boolean) => void;
   onClear: () => void;
   hasActive: boolean;
 }
@@ -53,8 +49,6 @@ const ReportFilters: React.FC<ReportFiltersProps> = ({
   branchId,
   onBranchChange,
   lockBranchId = null,
-  includeCancelled,
-  onIncludeCancelledChange,
   onClear,
   hasActive,
 }) => {
@@ -158,20 +152,8 @@ const ReportFilters: React.FC<ReportFiltersProps> = ({
           />
         </div>
 
-        {/* Include cancelled + clear */}
+        {/* Clear filters */}
         <div className="flex flex-col justify-end gap-2">
-          <button
-            onClick={() => onIncludeCancelledChange(!includeCancelled)}
-            className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-800 cursor-pointer transition-colors"
-          >
-            {includeCancelled ? (
-              <ToggleRight size={22} className="text-[#ff5a1f]" />
-            ) : (
-              <ToggleLeft size={22} className="text-gray-400" />
-            )}
-            Include Cancelled
-          </button>
-
           {hasActive && (
             <button
               onClick={onClear}

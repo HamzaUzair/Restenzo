@@ -79,6 +79,9 @@ const ExpenseCardList: React.FC<ExpenseCardListProps> = ({
               >
                 {exp.paymentMethod}
               </span>
+              {exp.invoiceNo ? (
+                <span className="text-[10px] text-gray-400">· Inv: {exp.invoiceNo}</span>
+              ) : null}
             </div>
             <div className="flex items-center gap-1.5">
               <Building2 size={12} className="text-gray-400" />

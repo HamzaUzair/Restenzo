@@ -22,6 +22,34 @@ const PaidReceiptModal: React.FC<PaidReceiptModalProps> = ({
 }) => {
   if (!isOpen || !order) return null;
 
+  const isDealBundle = (name: string) => name.trim().toLowerCase().startsWith("deal:");
+  const receiptLines = (() => {
+    type Item = (typeof order.items)[number];
+    type DealGroup = { bundle: Item; includes: Item[] };
+    type Line = { type: "deal"; group: DealGroup } | { type: "item"; item: Item };
+
+    const lines: Line[] = [];
+    let currentDeal: DealGroup | null = null;
+
+    for (const item of order.items) {
+      if (isDealBundle(item.name)) {
+        currentDeal = { bundle: item, includes: [] };
+        lines.push({ type: "deal", group: currentDeal });
+        continue;
+      }
+
+      if (currentDeal && item.price === 0) {
+        currentDeal.includes.push(item);
+        continue;
+      }
+
+      currentDeal = null;
+      lines.push({ type: "item", item });
+    }
+
+    return lines;
+  })();
+
   const subtotal = order.items.reduce((s, it) => s + it.price * it.qty, 0);
   const resolvedSubtotal = order.subtotal ?? subtotal;
   const serviceChargePercent = order.serviceChargePercent ?? 5;
@@ -90,28 +118,73 @@ const PaidReceiptModal: React.FC<PaidReceiptModalProps> = ({
             <div className="mb-3">
               <p className="text-sm font-bold text-gray-800 mb-2">Items</p>
               <div className="space-y-2.5">
-                {order.items.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-start justify-between border-b border-gray-50 pb-2"
-                  >
-                    <div>
-                      <p className="text-sm font-semibold text-gray-800">
-                        {item.name}
-                        {item.variationName ? ` (${item.variationName})` : ""}
-                      </p>
-                      <p className="text-[11px] text-gray-400">
-                        PKR {item.price.toLocaleString("en-PK", { minimumFractionDigits: 2 })} × {item.qty}
-                      </p>
+                {receiptLines.map((line, idx) => {
+                  if (line.type === "item") {
+                    const item = line.item;
+                    return (
+                      <div
+                        key={item.id}
+                        className="flex items-start justify-between border-b border-gray-50 pb-2"
+                      >
+                        <div>
+                          <p className="text-sm font-semibold text-gray-800">
+                            {item.name}
+                            {item.variationName ? ` (${item.variationName})` : ""}
+                          </p>
+                          <p className="text-[11px] text-gray-400">
+                            PKR {item.price.toLocaleString("en-PK", { minimumFractionDigits: 2 })} × {item.qty}
+                          </p>
+                        </div>
+                        <span className="text-sm font-bold text-gray-800 shrink-0">
+                          PKR{" "}
+                          {(item.price * item.qty).toLocaleString("en-PK", {
+                            minimumFractionDigits: 2,
+                          })}
+                        </span>
+                      </div>
+                    );
+                  }
+
+                  const { bundle, includes } = line.group;
+                  return (
+                    <div
+                      key={`${bundle.id}-${idx}`}
+                      className="border-b border-gray-50 pb-2 space-y-1.5"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-gray-800">
+                            {bundle.name}
+                            {bundle.variationName ? ` (${bundle.variationName})` : ""}
+                          </p>
+                          <p className="text-[11px] text-gray-400">
+                            PKR {bundle.price.toLocaleString("en-PK", { minimumFractionDigits: 2 })} × {bundle.qty}
+                          </p>
+                        </div>
+                        <span className="text-sm font-bold text-gray-800 shrink-0">
+                          PKR{" "}
+                          {(bundle.price * bundle.qty).toLocaleString("en-PK", {
+                            minimumFractionDigits: 2,
+                          })}
+                        </span>
+                      </div>
+                      {includes.length > 0 && (
+                        <div className="pl-3 border-l border-gray-200 space-y-1">
+                          <p className="text-[11px] text-gray-500">Includes:</p>
+                          {includes.map((inc) => (
+                            <div key={inc.id} className="flex items-center justify-between text-[13px]">
+                              <span className="text-gray-700">
+                                {inc.name}
+                                {inc.variationName ? ` (${inc.variationName})` : ""} × {inc.qty}
+                              </span>
+                              <span className="text-[11px] font-semibold text-gray-500">Included</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                    <span className="text-sm font-bold text-gray-800 shrink-0">
-                      PKR{" "}
-                      {(item.price * item.qty).toLocaleString("en-PK", {
-                        minimumFractionDigits: 2,
-                      })}
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 

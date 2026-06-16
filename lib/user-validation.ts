@@ -5,15 +5,24 @@
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ONLY_DIGITS_AND_SPACES_REGEX = /^[\d\s]+$/;
 
-export function validateEmailUsername(value: string): string | null {
+export function validateEmailUsername(
+  value: string,
+  fieldLabel = "Username email"
+): string | null {
   const trimmed = value?.trim() ?? "";
 
   if (!trimmed) {
-    return "Username email is required.";
+    return `${fieldLabel} is required.`;
+  }
+
+  if (!trimmed.includes("@")) {
+    return `${fieldLabel} must include @.`;
   }
 
   if (!EMAIL_REGEX.test(trimmed)) {
-    return "Please enter a valid email address for the username.";
+    return fieldLabel === "Username email"
+      ? "Please enter a valid email address for the username."
+      : "Please enter a valid email address.";
   }
 
   return null;

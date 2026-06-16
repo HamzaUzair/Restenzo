@@ -12,6 +12,7 @@ import {
   validateEmailUsername,
   validateNameWithLetters,
 } from "@/lib/user-validation";
+import { hashPassword } from "@/lib/password";
 
 type ApiUserRole =
   | "SUPER_ADMIN"
@@ -226,7 +227,9 @@ export async function PUT(
         branch_id: branchId,
         terminal: Math.max(1, Number(body.terminal) || 1),
         status: body.status === "Inactive" ? "Inactive" : "Active",
-        ...(body.password ? { password: String(body.password) } : {}),
+        ...(body.password
+          ? { password: await hashPassword(String(body.password)) }
+          : {}),
       },
       include: {
         restaurant: { select: { restaurant_id: true, name: true } },

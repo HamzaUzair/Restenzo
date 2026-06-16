@@ -8,6 +8,10 @@ import {
 } from "@/lib/server-auth";
 import type { Prisma } from "@prisma/client";
 import { formatBillNo, isLegacyReference } from "@/lib/bill-number";
+import {
+  isOrderTakerVisibleStatus,
+  ORDER_TAKER_VISIBLE_STATUSES,
+} from "@/lib/order-revenue";
 
 /**
  * Order statuses that keep a dine-in table "Occupied". As soon as the order
@@ -362,12 +366,6 @@ function serializeOrder(order: {
 export async function GET(request: NextRequest) {
   try {
     const auth = await requireAuth(request);
-    if (auth.role === "ORDER_TAKER") {
-      return NextResponse.json(
-        { error: "Order Taker cannot access orders listing" },
-        { status: 403 }
-      );
-    }
     const { searchParams } = new URL(request.url);
     const branchIdParam = searchParams.get("branchId");
     const statusParam = searchParams.get("status");
@@ -378,7 +376,18 @@ export async function GET(request: NextRequest) {
     const scope = await buildBranchScopeFilter(auth, requestedBranchId);
     const where: Prisma.OrderWhereInput = { ...(scope as Prisma.OrderWhereInput) };
 
-    if (statusParam && statusParam !== "all") where.order_status = statusParam;
+    if (auth.role === "ORDER_TAKER") {
+      where.order_status = { in: [...ORDER_TAKER_VISIBLE_STATUSES] };
+      if (
+        statusParam &&
+        statusParam !== "all" &&
+        isOrderTakerVisibleStatus(statusParam)
+      ) {
+        where.order_status = statusParam;
+      }
+    } else if (statusParam && statusParam !== "all") {
+      where.order_status = statusParam;
+    }
     if (searchParam) {
       const maybeId = Number(searchParam.replace(/^ORD-/i, "").trim());
       if (!Number.isNaN(maybeId)) {

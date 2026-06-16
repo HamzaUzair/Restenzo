@@ -5,6 +5,10 @@ interface LogoProps {
   href?: string;
   size?: "sm" | "md" | "lg";
   variant?: "default" | "mono";
+  /** When false, only the brand mark is rendered (no wordmark). */
+  showText?: boolean;
+  /** Override the default "Restenzo" wordmark. */
+  text?: string;
 }
 
 const sizeMap = {
@@ -17,6 +21,8 @@ const Logo: React.FC<LogoProps> = ({
   href = "/",
   size = "md",
   variant = "default",
+  showText = true,
+  text = "Restenzo",
 }) => {
   const s = sizeMap[size];
   const content = (
@@ -44,15 +50,17 @@ const Logo: React.FC<LogoProps> = ({
           className={`absolute top-1 right-1 ${s.dot} rounded-full bg-white/90 animate-pulse`}
         />
       </span>
-      <span
-        className={`font-bold tracking-tight ${s.text} ${
-          variant === "mono"
-            ? "text-white"
-            : "text-gray-900 dark:text-white"
-        }`}
-      >
-        Restenzo
-      </span>
+      {showText && (
+        <span
+          className={`font-bold tracking-tight ${s.text} ${
+            variant === "mono"
+              ? "text-white"
+              : "text-gray-900 dark:text-white"
+          }`}
+        >
+          {text}
+        </span>
+      )}
     </span>
   );
 

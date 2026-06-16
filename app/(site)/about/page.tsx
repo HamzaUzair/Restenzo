@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import {
   Target,
-  Sparkles,
+  Gem,
   Users,
   Globe2,
   Heart,
@@ -25,7 +25,7 @@ const values = [
     desc: "Every pixel is shaped by people who have actually worked a busy Friday service.",
   },
   {
-    icon: Sparkles,
+    icon: Gem,
     title: "Craft over quantity",
     desc: "We’d rather ship one beautiful feature than ten mediocre ones.",
   },

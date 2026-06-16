@@ -497,7 +497,7 @@ function KitchenColumn({
                       <p>
                         Started {formatTime(order.kitchenStartedAt)}
                       </p>
-                      <p className="inline-flex items-center gap-1 font-semibold text-blue-700">
+                      <p className="inline-flex items-center gap-1 font-semibold text-blue-700 dark:text-sky-300">
                         <Clock3 size={12} />
                         Prep Time{" "}
                         {formatPrepDuration(nowTs - order.kitchenStartedAt)}
@@ -510,7 +510,7 @@ function KitchenColumn({
                         Started {formatTime(order.kitchenStartedAt)} · Served{" "}
                         {formatTime(order.kitchenServedAt)}
                       </p>
-                      <p className="inline-flex items-center gap-1 font-semibold text-emerald-700">
+                      <p className="inline-flex items-center gap-1 font-semibold text-emerald-700 dark:text-emerald-300">
                         <Clock3 size={12} />
                         Total Prep Time{" "}
                         {formatPrepDuration(

@@ -540,6 +540,7 @@ model Expense {
   branch_id         Int?
   terminal          Int              @default(1)
   payment_method    String?
+  invoice_no        String?
   expense_date      DateTime         @default(now())
   created_by_id     Int?
   created_at        DateTime         @default(now())

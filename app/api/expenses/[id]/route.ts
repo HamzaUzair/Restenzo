@@ -19,12 +19,17 @@ const CATEGORY_NAMES = [
 
 const PAYMENT_METHODS = new Set(["Cash", "Card", "Online"]);
 
+function requiresInvoicePayment(method: string): boolean {
+  return method === "Card" || method === "Online";
+}
+
 function serializeExpense(row: {
   id: number;
   title: string;
   description: string | null;
   amount: unknown;
   payment_method: string | null;
+  invoice_no: string | null;
   expense_date: Date;
   created_at: Date;
   branch_id: number | null;
@@ -51,6 +56,7 @@ function serializeExpense(row: {
     branchName: row.branch?.branch_name ?? "—",
     amount: Number(row.amount),
     paymentMethod: safePayment,
+    invoiceNo: row.invoice_no?.trim() || null,
     date: dateStr,
     addedBy,
     createdAt: row.created_at.getTime(),
@@ -99,6 +105,7 @@ export async function PUT(
     const branchId = Number(body.branchId);
     const amount = Number(body.amount);
     const paymentMethod = String(body.paymentMethod ?? "").trim();
+    const invoiceNo = String(body.invoiceNo ?? "").trim();
     const dateStr = String(body.date ?? "").trim();
 
     if (!title) {
@@ -115,6 +122,12 @@ export async function PUT(
     }
     if (!PAYMENT_METHODS.has(paymentMethod)) {
       return NextResponse.json({ error: "Valid payment method is required" }, { status: 400 });
+    }
+    if (requiresInvoicePayment(paymentMethod) && !invoiceNo) {
+      return NextResponse.json(
+        { error: "Invoice number is required for Card and Online payments" },
+        { status: 400 }
+      );
     }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
       return NextResponse.json({ error: "Valid date is required" }, { status: 400 });
@@ -142,6 +155,7 @@ export async function PUT(
       branch_id: branchId,
       expenseCategoryId: category.id,
       payment_method: paymentMethod,
+      invoice_no: requiresInvoicePayment(paymentMethod) ? invoiceNo : null,
       expense_date: expenseDate,
     };
 

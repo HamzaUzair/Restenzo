@@ -49,17 +49,11 @@ export interface RestaurantDetail extends Restaurant {
     full_name: string;
     status: string;
   }>;
-  /**
-   * Primary Restaurant Admin shown in the Super Admin edit modal so the
-   * platform owner can view / rotate the tenant's login credentials.
-   * Password is returned in plain text because the User model currently
-   * stores it unhashed (see POST /api/auth/login).
-   */
+  /** Primary Restaurant Admin shown in the Super Admin edit modal. */
   primary_admin: {
     user_id: number;
     username: string;
     full_name: string;
-    password: string;
     status: string;
   } | null;
 }

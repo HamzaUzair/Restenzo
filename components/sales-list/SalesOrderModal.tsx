@@ -46,7 +46,7 @@ function fmtDate(ts: number) {
 }
 
 function fmtPkr(n: number) {
-  return "PKR " + n.toLocaleString("en-PK");
+  return "PKR " + n.toLocaleString("en-PK", { maximumFractionDigits: 0 });
 }
 
 interface SalesOrderModalProps {
@@ -72,6 +72,34 @@ const SalesOrderModal: React.FC<SalesOrderModalProps> = ({
   }, [order, handleKey]);
 
   if (!order) return null;
+
+  const isDealBundle = (name: string) => name.trim().toLowerCase().startsWith("deal:");
+  const groupedItems = (() => {
+    type Item = (typeof order.items)[number];
+    type Group = { bundle: Item; includes: Item[] };
+    type Line = { type: "deal"; group: Group } | { type: "item"; item: Item };
+
+    const lines: Line[] = [];
+    let currentDeal: Group | null = null;
+
+    for (const item of order.items) {
+      if (isDealBundle(item.name)) {
+        currentDeal = { bundle: item, includes: [] };
+        lines.push({ type: "deal", group: currentDeal });
+        continue;
+      }
+
+      if (currentDeal && item.price === 0) {
+        currentDeal.includes.push(item);
+        continue;
+      }
+
+      currentDeal = null;
+      lines.push({ type: "item", item });
+    }
+
+    return lines;
+  })();
 
   const infoCards: { icon: React.ReactNode; label: string; value: React.ReactNode }[] = [
     {
@@ -189,18 +217,56 @@ const SalesOrderModal: React.FC<SalesOrderModalProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {order.items.map((it) => (
-                    <tr key={it.id}>
-                      <td className="px-4 py-2.5 text-gray-700">{it.name}</td>
-                      <td className="px-4 py-2.5 text-center text-gray-600">{it.qty}</td>
-                      <td className="px-4 py-2.5 text-right text-gray-600">
-                        {fmtPkr(it.price)}
-                      </td>
-                      <td className="px-4 py-2.5 text-right font-semibold text-gray-800">
-                        {fmtPkr(it.qty * it.price)}
-                      </td>
-                    </tr>
-                  ))}
+                  {groupedItems.map((line, idx) => {
+                    if (line.type === "item") {
+                      const it = line.item;
+                      return (
+                        <tr key={it.id}>
+                          <td className="px-4 py-2.5 text-gray-700">{it.name}</td>
+                          <td className="px-4 py-2.5 text-center text-gray-600">{it.qty}</td>
+                          <td className="px-4 py-2.5 text-right text-gray-600">{fmtPkr(it.price)}</td>
+                          <td className="px-4 py-2.5 text-right font-semibold text-gray-800">
+                            {fmtPkr(it.qty * it.price)}
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    const { bundle, includes } = line.group;
+                    return (
+                      <React.Fragment key={`${bundle.id}-${idx}`}>
+                        <tr>
+                          <td className="px-4 py-2.5 text-gray-700 font-semibold">{bundle.name}</td>
+                          <td className="px-4 py-2.5 text-center text-gray-600">{bundle.qty}</td>
+                          <td className="px-4 py-2.5 text-right text-gray-600">{fmtPkr(bundle.price)}</td>
+                          <td className="px-4 py-2.5 text-right font-semibold text-gray-800">
+                            {fmtPkr(bundle.qty * bundle.price)}
+                          </td>
+                        </tr>
+                        {includes.length > 0 && (
+                          <tr>
+                            <td colSpan={4} className="px-4 pb-2.5">
+                              <div className="ml-2 border-l border-gray-200 pl-3 space-y-1">
+                                <p className="text-[11px] text-gray-500">Includes:</p>
+                                {includes.map((inc) => (
+                                  <div
+                                    key={inc.id}
+                                    className="flex items-center justify-between text-[13px]"
+                                  >
+                                    <span className="text-gray-700">
+                                      {inc.name}
+                                      {inc.variationName ? ` (${inc.variationName})` : ""} x{inc.qty}
+                                    </span>
+                                    <span className="text-[11px] font-semibold text-gray-500">Included</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

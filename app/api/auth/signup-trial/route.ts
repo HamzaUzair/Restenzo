@@ -23,6 +23,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
 import {
+  validateEmailUsername,
+  validateNameWithLetters,
+} from "@/lib/user-validation";
+import {
   ensureStripeCustomer,
   ensureStripePriceForPlan,
   createTrialSubscription,
@@ -36,6 +40,11 @@ import { generateUniqueBranchCode } from "@/lib/branch-code";
 import { seedDefaultCategoriesForBranch } from "@/lib/seedDefaultCategories";
 import type { BillingCycle } from "@/lib/pricing";
 import { issueOnboardingResumeToken } from "@/lib/onboarding-resume";
+import {
+  hashPassword,
+  upgradePasswordHashIfNeeded,
+  verifyPassword,
+} from "@/lib/password";
 
 function slugify(input: string) {
   return String(input)
@@ -81,27 +90,27 @@ export async function POST(request: NextRequest) {
     const cycle: BillingCycle = body.cycle === "yearly" ? "yearly" : "monthly";
 
     // ── Validation ──────────────────────────────────────────────────────
-    if (!fullName) {
-      return NextResponse.json(
-        { error: "Full name is required" },
-        { status: 400 }
-      );
+    const fullNameError = validateNameWithLetters(fullName);
+    if (fullNameError) {
+      return NextResponse.json({ error: fullNameError }, { status: 400 });
     }
-    if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
-      return NextResponse.json(
-        { error: "A valid email is required" },
-        { status: 400 }
-      );
+
+    const restaurantNameError = validateNameWithLetters(
+      restaurantName,
+      "Restaurant name"
+    );
+    if (restaurantNameError) {
+      return NextResponse.json({ error: restaurantNameError }, { status: 400 });
     }
+
+    const emailError = validateEmailUsername(email, "Work email");
+    if (emailError) {
+      return NextResponse.json({ error: emailError }, { status: 400 });
+    }
+
     if (!password || password.length < 8) {
       return NextResponse.json(
         { error: "Password must be at least 8 characters" },
-        { status: 400 }
-      );
-    }
-    if (!restaurantName) {
-      return NextResponse.json(
-        { error: "Restaurant name is required" },
         { status: 400 }
       );
     }
@@ -124,7 +133,7 @@ export async function POST(request: NextRequest) {
         existingUser.restaurant?.onboarding_complete === false;
 
       if (isIncompleteSignup) {
-        if (existingUser.password !== password) {
+        if (!(await verifyPassword(password, existingUser.password))) {
           return NextResponse.json(
             {
               error:
@@ -135,6 +144,11 @@ export async function POST(request: NextRequest) {
             { status: 409 }
           );
         }
+        await upgradePasswordHashIfNeeded(
+          existingUser.id,
+          password,
+          existingUser.password
+        );
         return NextResponse.json(
           {
             error:
@@ -196,7 +210,7 @@ export async function POST(request: NextRequest) {
       const user = await tx.user.create({
         data: {
           username: email,
-          password, // NOTE: hashing is handled at the auth layer in a later pass
+          password: await hashPassword(password),
           fullname: fullName,
           role: "RESTAURANT_ADMIN",
           restaurant_id: restaurant.restaurant_id,

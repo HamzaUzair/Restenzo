@@ -7,6 +7,7 @@ import {
   Loader2,
   Building2,
   Calendar,
+  XCircle,
 } from "lucide-react";
 import type { Order, OrderStatus } from "@/types/order";
 
@@ -41,6 +42,7 @@ interface OrderCardListProps {
   loading: boolean;
   onView: (order: Order) => void;
   onPay?: (order: Order) => void;
+  onCancel?: (order: Order) => void;
   isCashierMode?: boolean;
 }
 
@@ -49,6 +51,7 @@ const OrderCardList: React.FC<OrderCardListProps> = ({
   loading,
   onView,
   onPay,
+  onCancel,
   isCashierMode = false,
 }) => {
   if (loading) {
@@ -139,6 +142,15 @@ const OrderCardList: React.FC<OrderCardListProps> = ({
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#ff5a1f] text-white text-xs font-semibold hover:bg-[#e04e18] transition-colors cursor-pointer"
                 >
                   Pay
+                </button>
+              )}
+              {onCancel && order.status === "Pending" && (
+                <button
+                  onClick={() => onCancel(order)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-200 text-red-600 text-xs font-semibold hover:bg-red-50 transition-colors cursor-pointer"
+                >
+                  <XCircle size={14} />
+                  Cancel
                 </button>
               )}
             </div>

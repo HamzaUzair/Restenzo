@@ -113,6 +113,35 @@ const CashierPaymentModal: React.FC<CashierPaymentModalProps> = ({
 
   if (!isOpen || !order) return null;
 
+  const isDealBundle = (name: string) => name.trim().toLowerCase().startsWith("deal:");
+
+  const billLines = (() => {
+    type DealGroup = { bundle: Order["items"][number]; includes: Array<Order["items"][number]> };
+    type Line = { type: "deal"; group: DealGroup } | { type: "item"; item: Order["items"][number] };
+
+    const lines: Line[] = [];
+    let currentDeal: DealGroup | null = null;
+
+    for (const item of order.items) {
+      if (isDealBundle(item.name)) {
+        currentDeal = { bundle: item, includes: [] };
+        lines.push({ type: "deal", group: currentDeal });
+        continue;
+      }
+
+      // Deal component rows are written to the DB with price/total 0 right after the bundle row.
+      if (currentDeal && item.price === 0) {
+        currentDeal.includes.push(item);
+        continue;
+      }
+
+      currentDeal = null;
+      lines.push({ type: "item", item });
+    }
+
+    return lines;
+  })();
+
   const handleMarkPaid = async () => {
     if (!order) return;
     setError("");
@@ -245,17 +274,50 @@ const CashierPaymentModal: React.FC<CashierPaymentModalProps> = ({
               Bill Summary
             </div>
             <div className="p-4 space-y-2">
-              {order.items.map((item) => (
-                <div key={item.id} className="flex items-center justify-between text-sm">
-                  <div className="text-gray-700">
-                    {item.name}
-                    {item.variationName ? ` (${item.variationName})` : ""} x{item.qty}
+              {billLines.map((line, idx) => {
+                if (line.type === "item") {
+                  const item = line.item;
+                  return (
+                    <div key={item.id} className="flex items-center justify-between text-sm">
+                      <div className="text-gray-700">
+                        {item.name}
+                        {item.variationName ? ` (${item.variationName})` : ""} x{item.qty}
+                      </div>
+                      <div className="font-medium text-gray-800">
+                        PKR {(item.price * item.qty).toLocaleString()}
+                      </div>
+                    </div>
+                  );
+                }
+
+                const { bundle, includes } = line.group;
+                return (
+                  <div key={`${bundle.id}-${idx}`} className="space-y-1.5">
+                    <div className="flex items-center justify-between text-sm">
+                      <div className="text-gray-900 font-semibold">
+                        {bundle.name} x{bundle.qty}
+                      </div>
+                      <div className="font-semibold text-gray-900">
+                        PKR {(bundle.price * bundle.qty).toLocaleString()}
+                      </div>
+                    </div>
+                    {includes.length > 0 && (
+                      <div className="pl-3 border-l border-gray-200 space-y-1">
+                        <div className="text-[11px] text-gray-500">Includes:</div>
+                        {includes.map((inc) => (
+                          <div key={inc.id} className="flex items-center justify-between text-[13px]">
+                            <div className="text-gray-700">
+                              {inc.name}
+                              {inc.variationName ? ` (${inc.variationName})` : ""} x{inc.qty}
+                            </div>
+                            <div className="text-[11px] font-semibold text-gray-500">Included</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  <div className="font-medium text-gray-800">
-                    PKR {(item.price * item.qty).toLocaleString()}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
               <div className="border-t border-dashed border-gray-200 pt-3 mt-2 space-y-1.5">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-500">Subtotal</span>

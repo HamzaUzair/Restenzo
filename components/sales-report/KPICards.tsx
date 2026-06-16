@@ -122,7 +122,7 @@ const KPICards: React.FC<KPICardsProps> = ({ kpis }) => {
                     </button>
                     {showTip && (
                       <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-gray-800 text-white text-[10px] rounded-lg whitespace-nowrap shadow-lg z-20">
-                        Net = Gross − Discounts − Refunds
+                        Net = Gross − Discounts − Service Charges − Refunds
                         <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-800" />
                       </div>
                     )}

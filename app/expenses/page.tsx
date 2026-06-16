@@ -228,6 +228,7 @@ export default function ExpensesPage() {
       branchId,
       amount: Number(data.amount),
       paymentMethod: data.paymentMethod,
+      invoiceNo: data.invoiceNo.trim() || null,
       date: data.date,
     };
 

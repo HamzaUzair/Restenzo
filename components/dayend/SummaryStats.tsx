@@ -72,14 +72,18 @@ const SummaryStats: React.FC<SummaryStatsProps> = ({ stats }) => (
     {statConfig.map(({ key, label, value, icon: Icon, bg, color }) => (
       <div
         key={key}
-        className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-center gap-3"
+        className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900"
       >
         <div className={`w-10 h-10 rounded-lg ${bg} flex items-center justify-center shrink-0 ${color}`}>
           <Icon size={20} />
         </div>
         <div className="min-w-0">
-          <p className="text-[11px] text-gray-400 font-medium truncate">{label}</p>
-          <p className="text-base font-bold text-gray-800 truncate">{value(stats)}</p>
+          <p className="text-xs font-medium leading-tight text-gray-500 whitespace-normal break-words dark:text-slate-300">
+            {label}
+          </p>
+          <p className="text-base font-bold text-gray-900 whitespace-normal break-words dark:text-slate-100">
+            {value(stats)}
+          </p>
         </div>
       </div>
     ))}

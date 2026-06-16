@@ -7,8 +7,6 @@ import {
   Layers3,
   CalendarDays,
   XCircle,
-  ToggleLeft,
-  ToggleRight,
 } from "lucide-react";
 import type { MSTimeRange, MSBranch } from "@/types/menuSales";
 
@@ -38,8 +36,6 @@ interface MenuSalesFiltersProps {
   onCategoryChange: (v: string | "all") => void;
   search: string;
   onSearchChange: (v: string) => void;
-  activeOnly: boolean;
-  onActiveOnlyChange: (v: boolean) => void;
   onClear: () => void;
   hasActive: boolean;
 }
@@ -60,8 +56,6 @@ const MenuSalesFilters: React.FC<MenuSalesFiltersProps> = ({
   onCategoryChange,
   search,
   onSearchChange,
-  activeOnly,
-  onActiveOnlyChange,
   onClear,
   hasActive,
 }) => {
@@ -186,19 +180,8 @@ const MenuSalesFilters: React.FC<MenuSalesFiltersProps> = ({
           </div>
         </div>
 
-        {/* Active toggle + clear */}
+        {/* Clear filters */}
         <div className="flex flex-col justify-end gap-2">
-          <button
-            onClick={() => onActiveOnlyChange(!activeOnly)}
-            className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-800 cursor-pointer transition-colors"
-          >
-            {activeOnly ? (
-              <ToggleRight size={22} className="text-[#ff5a1f]" />
-            ) : (
-              <ToggleLeft size={22} className="text-gray-400" />
-            )}
-            Active Only
-          </button>
           {hasActive && (
             <button
               onClick={onClear}

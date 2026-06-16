@@ -8,7 +8,6 @@ export interface RestaurantEditAdmin {
   user_id: number;
   username: string;
   full_name: string;
-  password: string;
 }
 
 const emptyForm: RestaurantFormData = {
@@ -75,8 +74,8 @@ const RestaurantModal: React.FC<RestaurantModalProps> = ({
         has_multiple_branches: editRestaurant.has_multiple_branches,
         admin_full_name: editAdmin?.full_name ?? "",
         admin_username: editAdmin?.username ?? "",
-        admin_password: editAdmin?.password ?? "",
-        admin_confirm_password: editAdmin?.password ?? "",
+        admin_password: "",
+        admin_confirm_password: "",
       });
     } else {
       setForm(emptyForm);

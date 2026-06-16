@@ -8,6 +8,7 @@ import {
   Activity,
   CheckCircle2,
   Clock,
+  FileText,
 } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import OrdersToolbar from "@/components/orders/OrdersToolbar";
@@ -16,13 +17,15 @@ import OrderCardList from "@/components/orders/OrderCardList";
 import OrderDetailsModal from "@/components/orders/OrderDetailsModal";
 import PaidReceiptModal from "@/components/orders/PaidReceiptModal";
 import CashierPaymentModal from "@/components/orders/CashierPaymentModal";
+import CancelOrderModal from "@/components/orders/CancelOrderModal";
 import type { Branch } from "@/types/branch";
 import type { AppRole } from "@/types/auth";
 import type { Order, OrderStatus } from "@/types/order";
-import { ORDER_STATUSES } from "@/types/order";
+import { ORDER_STATUSES, ORDER_TAKER_STATUS_FILTER_OPTIONS } from "@/types/order";
 import { apiFetch, getAuthSession, isBranchFilterLocked } from "@/lib/auth-client";
 import { useBranchStatus } from "@/lib/use-branch-status";
 import type { AuthSession } from "@/types/auth";
+import { exportOrdersReportPdf } from "@/lib/pdf/export-orders-report";
 
 function OrdersPageInner() {
   const router = useRouter();
@@ -49,6 +52,8 @@ function OrdersPageInner() {
   const [viewOrder, setViewOrder] = useState<Order | null>(null);
   const [receiptOrder, setReceiptOrder] = useState<Order | null>(null);
   const [payOrder, setPayOrder] = useState<Order | null>(null);
+  const [cancelOrder, setCancelOrder] = useState<Order | null>(null);
+  const [cancelError, setCancelError] = useState("");
 
   // Branch status guard. Scoped to the viewer's own session branch — so
   // Cashier / Branch Admin / single-branch Restaurant Admin see the banner
@@ -63,15 +68,12 @@ function OrdersPageInner() {
     if (!session) {
       router.replace("/login");
     } else {
-      if (session.role === "ORDER_TAKER") {
-        router.replace("/create-order");
-        return;
-      }
       setSession(session);
       setSessionRole(session.role);
       setSessionBranchId(session.branchId ?? null);
       if (
-        (session.role === "RESTAURANT_ADMIN" ||
+        (session.role === "ORDER_TAKER" ||
+          session.role === "RESTAURANT_ADMIN" ||
           session.role === "BRANCH_ADMIN" ||
           session.role === "CASHIER") &&
         session.branchId
@@ -90,6 +92,14 @@ function OrdersPageInner() {
       if (statusParam) {
         if (statusParam === "all") {
           setStatusFilter("all");
+        } else if (session.role === "ORDER_TAKER") {
+          if (
+            (ORDER_TAKER_STATUS_FILTER_OPTIONS as readonly string[]).includes(
+              statusParam
+            )
+          ) {
+            setStatusFilter(statusParam as OrderStatus);
+          }
         } else if ((ORDER_STATUSES as readonly string[]).includes(statusParam)) {
           setStatusFilter(statusParam as OrderStatus);
         }
@@ -163,6 +173,69 @@ function OrdersPageInner() {
     void loadOrders();
   };
 
+  const handleExportPdf = () => {
+    const session = getAuthSession();
+    const branchLabel =
+      filterBranchId === "all"
+        ? "All"
+        : branches.find((b) => b.branch_id === filterBranchId)?.branch_name ??
+          String(filterBranchId);
+    exportOrdersReportPdf({
+      session,
+      orders: filteredOrders.map((o) => ({
+        orderNo: o.orderNo,
+        branchName: o.branchName,
+        createdAt: o.createdAt,
+        type: o.type,
+        paymentMethod: o.paymentMode,
+        paid: o.paid,
+        status: o.status,
+        total: o.total,
+      })),
+      filters: {
+        branchLabel,
+        search: search.trim(),
+        status: statusFilter === "all" ? "All" : statusFilter,
+        paymentMethod: "All",
+        dateRange: "—",
+      },
+    });
+  };
+
+  const isOrderTaker = sessionRole === "ORDER_TAKER";
+  const canCancelPending =
+    sessionRole === "ORDER_TAKER" ||
+    sessionRole === "BRANCH_ADMIN" ||
+    sessionRole === "RESTAURANT_ADMIN" ||
+    sessionRole === "SUPER_ADMIN";
+
+  const statusOptionsForToolbar = isOrderTaker
+    ? ORDER_TAKER_STATUS_FILTER_OPTIONS
+    : undefined;
+
+  const handleConfirmCancel = async () => {
+    if (!cancelOrder) return;
+    setCancelError("");
+    try {
+      const res = await apiFetch(`/api/orders/${cancelOrder.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "Cancelled" }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        setCancelError(
+          typeof j.error === "string" ? j.error : "Could not cancel order"
+        );
+        return;
+      }
+      setCancelOrder(null);
+      await loadOrders();
+    } catch {
+      setCancelError("Could not cancel order");
+    }
+  };
+
   /* ══════════════ Branch-filtered orders (for counts) ══════════════ */
   const branchFiltered = useMemo(() => {
     if (filterBranchId === "all") return orders;
@@ -172,11 +245,12 @@ function OrdersPageInner() {
   /* ══════════════ Status counts (after branch filter) ══════════════ */
   const statusCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    ORDER_STATUSES.forEach((s) => {
+    const statuses = statusOptionsForToolbar ?? ORDER_STATUSES;
+    statuses.forEach((s) => {
       counts[s] = branchFiltered.filter((o) => o.status === s).length;
     });
     return counts;
-  }, [branchFiltered]);
+  }, [branchFiltered, statusOptionsForToolbar]);
 
   /* ══════════════ Fully filtered orders ══════════════ */
   // Only the visible list respects the selected status chip; `statusCounts`
@@ -259,27 +333,42 @@ function OrdersPageInner() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h2 className="text-2xl font-bold text-gray-800">
-              {sessionRole === "CASHIER" ? "Cashier Panel" : "Order Management"}
+              {sessionRole === "CASHIER"
+                ? "Cashier Panel"
+                : isOrderTaker
+                ? "Orders"
+                : "Order Management"}
             </h2>
             <p className="text-sm text-gray-500 mt-1">
               {sessionRole === "CASHIER"
                 ? "Handle served orders, collect payments, and print receipts"
+                : isOrderTaker
+                ? "View pending, running, served, and cancelled orders for your branch"
                 : "View and manage all orders with a clean overview"}
             </p>
           </div>
 
-          <button
-            onClick={handleRefresh}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border border-[#ff5a1f] text-[#ff5a1f] text-sm font-semibold hover:bg-[#ff5a1f]/5 transition-colors cursor-pointer shrink-0"
-          >
-            <RefreshCw size={16} />
-            Refresh
-          </button>
+          <div className="flex items-center gap-2 shrink-0 flex-wrap">
+            <button
+              onClick={handleExportPdf}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border border-gray-200 text-gray-600 text-sm font-semibold hover:bg-gray-50 transition-colors cursor-pointer"
+            >
+              <FileText size={16} />
+              Export PDF
+            </button>
+            <button
+              onClick={handleRefresh}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border border-[#ff5a1f] text-[#ff5a1f] text-sm font-semibold hover:bg-[#ff5a1f]/5 transition-colors cursor-pointer"
+            >
+              <RefreshCw size={16} />
+              Refresh
+            </button>
+          </div>
         </div>
       </div>
 
       {/* ── Quick Stats ── */}
-      {!branchesLoading && !ordersLoading && (
+      {!isOrderTaker && !branchesLoading && !ordersLoading && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           {statCards.map((s) => (
             <div
@@ -328,7 +417,14 @@ function OrdersPageInner() {
           sessionRole === "CASHIER" ||
           isBranchFilterLocked(session)
         }
+        statusOptions={statusOptionsForToolbar}
       />
+
+      {cancelError && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {cancelError}
+        </div>
+      )}
 
       {/* ── Desktop: Table | Mobile: Card list ── */}
       <div className="hidden md:block">
@@ -337,6 +433,7 @@ function OrdersPageInner() {
           loading={branchesLoading || ordersLoading}
           onView={setViewOrder}
           onPay={branchInactive ? undefined : setPayOrder}
+          onCancel={canCancelPending ? setCancelOrder : undefined}
           isCashierMode={sessionRole === "CASHIER"}
         />
       </div>
@@ -346,6 +443,7 @@ function OrdersPageInner() {
           loading={branchesLoading || ordersLoading}
           onView={setViewOrder}
           onPay={branchInactive ? undefined : setPayOrder}
+          onCancel={canCancelPending ? setCancelOrder : undefined}
           isCashierMode={sessionRole === "CASHIER"}
         />
       </div>
@@ -379,6 +477,16 @@ function OrdersPageInner() {
           );
           setReceiptOrder(updatedOrder);
         }}
+      />
+
+      <CancelOrderModal
+        isOpen={!!cancelOrder}
+        order={cancelOrder}
+        onClose={() => {
+          setCancelOrder(null);
+          setCancelError("");
+        }}
+        onConfirm={handleConfirmCancel}
       />
     </DashboardLayout>
   );

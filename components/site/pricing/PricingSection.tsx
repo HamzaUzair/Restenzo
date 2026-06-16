@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { Check, Sparkles } from "lucide-react";
+import { Check } from "lucide-react";
 import Container from "../Container";
 import Reveal from "../Reveal";
 import { YEARLY_DISCOUNT_PERCENT, type BillingCycle } from "@/lib/pricing";
@@ -81,8 +81,7 @@ const PricingSection: React.FC<PricingSectionProps> = ({ plans }) => {
                 }`}
               >
                 {plan.isPopular && (
-                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 inline-flex items-center gap-1 px-3 py-1 rounded-full bg-gradient-brand text-white text-[11px] font-bold tracking-wide shadow-lg">
-                    <Sparkles className="h-3 w-3" />
+                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 inline-flex items-center px-3 py-1 rounded-full bg-gradient-brand text-white text-[11px] font-bold tracking-wide shadow-lg">
                     Most popular
                   </span>
                 )}

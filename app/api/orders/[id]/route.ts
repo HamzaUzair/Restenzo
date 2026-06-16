@@ -8,6 +8,7 @@ import {
   requireAuth,
 } from "@/lib/server-auth";
 import { formatBillNo } from "@/lib/bill-number";
+import { ORDER_CANCEL_ROLES } from "@/lib/order-revenue";
 
 const ALLOWED_KITCHEN_STATUSES = new Set(["Running", "Served"]);
 /**
@@ -110,12 +111,28 @@ export async function PATCH(
 
     const isKitchenTransition = ALLOWED_KITCHEN_STATUSES.has(nextStatus);
     const isCashierTransition = nextStatus === "Paid";
+    const isCancelTransition = nextStatus === "Cancelled";
 
-    if (!isKitchenTransition && !isCashierTransition) {
+    if (!isKitchenTransition && !isCashierTransition && !isCancelTransition) {
       return NextResponse.json(
         { error: "Status transition not allowed" },
         { status: 400 }
       );
+    }
+
+    if (isCancelTransition) {
+      if (!ORDER_CANCEL_ROLES.has(auth.role)) {
+        return NextResponse.json(
+          { error: "You are not allowed to cancel orders" },
+          { status: 403 }
+        );
+      }
+      if (existing.order_status !== "Pending") {
+        return NextResponse.json(
+          { error: "Only pending orders can be cancelled" },
+          { status: 400 }
+        );
+      }
     }
 
     if (isKitchenTransition) {
@@ -391,6 +408,23 @@ export async function PATCH(
             data: { status: TABLE_STATUS_AVAILABLE },
           });
         }
+      }
+    }
+
+    if (isCancelTransition && existing.table_id) {
+      const stillActive = await prisma.order.findFirst({
+        where: {
+          table_id: existing.table_id,
+          order_id: { not: existing.order_id },
+          order_status: { in: [...ACTIVE_ORDER_STATUSES] },
+        },
+        select: { order_id: true },
+      });
+      if (!stillActive) {
+        await prisma.table.update({
+          where: { table_id: existing.table_id },
+          data: { status: TABLE_STATUS_AVAILABLE },
+        });
       }
     }
 

@@ -141,6 +141,9 @@ const ExpenseTable: React.FC<ExpenseTableProps> = ({
                   >
                     {exp.paymentMethod}
                   </span>
+                  {exp.invoiceNo ? (
+                    <p className="mt-1 text-[10px] text-gray-500">Inv: {exp.invoiceNo}</p>
+                  ) : null}
                 </td>
 
                 {/* Date */}

@@ -118,10 +118,15 @@ export async function GET(request: NextRequest) {
       .filter((row) => (includeCancelled ? true : row.status !== "Cancelled"));
 
     const booked = mappedOrders.filter((row) => BOOKED_SALES_STATUSES.has(row.status));
+    // Business rule:
+    // - Gross Sales: billed sales before deductions.
+    // - Net Revenue: Gross - Discounts - Service Charges - Refunds.
+    //   (Refunds are 0 for now until refund flow is introduced.)
     const grossSales = booked.reduce((sum, row) => sum + row.subtotal + row.serviceCharge, 0);
     const discountsGiven = booked.reduce((sum, row) => sum + row.discount, 0);
     const serviceCharges = booked.reduce((sum, row) => sum + row.serviceCharge, 0);
-    const netRevenue = booked.reduce((sum, row) => sum + row.total, 0);
+    const refundsAmount = 0;
+    const netRevenue = grossSales - discountsGiven - serviceCharges - refundsAmount;
     const totalOrders = booked.length;
     const avgOrderValue = totalOrders > 0 ? Math.round(netRevenue / totalOrders) : 0;
 
@@ -195,7 +200,7 @@ export async function GET(request: NextRequest) {
       existing.gross += row.subtotal + row.serviceCharge;
       existing.discounts += row.discount;
       existing.serviceCharges += row.serviceCharge;
-      existing.net += row.total;
+      existing.net += row.subtotal - row.discount;
       switch (row.paymentMethod) {
         case "Cash":
           existing.cash += row.total;
@@ -234,7 +239,7 @@ export async function GET(request: NextRequest) {
         taxCollected: 0,
         discountsGiven,
         discountCount: booked.filter((row) => row.discount > 0).length,
-        refundsAmount: 0,
+        refundsAmount,
         refundCount: 0,
         serviceCharges,
       },
