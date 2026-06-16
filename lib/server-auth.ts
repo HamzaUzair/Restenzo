@@ -24,6 +24,7 @@ export type ServerAuthUser = {
    * `null` for SUPER_ADMIN or users without a restaurant.
    */
   restaurantHasMultipleBranches: boolean | null;
+  restaurantStatus: string | null;
   branchId: number | null;
   status: string;
 };
@@ -93,12 +94,19 @@ export function getOperationalEditMode(
 ): OperationalEditMode {
   if (user.role === "SUPER_ADMIN") return "full";
   if (user.role === "RESTAURANT_ADMIN") {
+    if (user.restaurantStatus !== "Active") return "read_only";
     return user.restaurantHasMultipleBranches === true ? "read_only" : "full";
   }
   return "branch_edit";
 }
 
 export async function requireAuth(request: NextRequest): Promise<ServerAuthUser> {
+  const method = request.method.toUpperCase();
+  const isMutatingMethod =
+    method === "POST" ||
+    method === "PUT" ||
+    method === "PATCH" ||
+    method === "DELETE";
   const auth = request.headers.get("authorization") || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
   if (!token) throw new AuthError("Unauthorized", 401);
@@ -113,12 +121,23 @@ export async function requireAuth(request: NextRequest): Promise<ServerAuthUser>
       branch_id: true,
       status: true,
       restaurant: {
-        select: { has_multiple_branches: true },
+        select: { has_multiple_branches: true, status: true },
       },
     },
   });
   if (!user) throw new AuthError("Unauthorized", 401);
   if (user.status !== "Active") throw new AuthError("User inactive", 403);
+  if (
+    isMutatingMethod &&
+    user.role !== "SUPER_ADMIN" &&
+    user.restaurant_id &&
+    user.restaurant?.status !== "Active"
+  ) {
+    throw new AuthError(
+      "This restaurant is inactive. You can view data only until it is reactivated by Restenzo Admin.",
+      423
+    );
+  }
 
   return {
     id: user.id,
@@ -127,9 +146,25 @@ export async function requireAuth(request: NextRequest): Promise<ServerAuthUser>
     restaurantId: user.restaurant_id ?? null,
     restaurantHasMultipleBranches:
       user.restaurant?.has_multiple_branches ?? null,
+    restaurantStatus: user.restaurant?.status ?? null,
     branchId: user.branch_id ?? null,
     status: user.status,
   };
+}
+
+/**
+ * Tenant users can still log in when their restaurant is inactive, but they
+ * are forced into read-only mode and cannot perform writes.
+ */
+export function assertTenantWriteAccess(user: ServerAuthUser) {
+  if (user.role === "SUPER_ADMIN") return;
+  if (!user.restaurantId) return;
+  if (user.restaurantStatus !== "Active") {
+    throw new AuthError(
+      "This restaurant is inactive. You can view data only until it is reactivated by Restenzo Admin.",
+      423
+    );
+  }
 }
 
 export function requireSuperAdmin(user: ServerAuthUser) {

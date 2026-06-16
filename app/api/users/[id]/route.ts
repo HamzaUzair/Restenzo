@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
   AuthError,
+  assertTenantWriteAccess,
   assertBranchWithinRestaurant,
   assertRestaurantAccess,
   normalizeRole,
@@ -64,6 +65,7 @@ export async function PUT(
     ) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
+    assertTenantWriteAccess(auth);
 
     const { id } = await params;
     const userId = Number(id);
@@ -276,6 +278,7 @@ export async function DELETE(
     ) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
+    assertTenantWriteAccess(auth);
 
     const { id } = await params;
     const userId = Number(id);

@@ -38,6 +38,7 @@ export async function POST(request: NextRequest) {
             restaurant_id: true,
             name: true,
             has_multiple_branches: true,
+            status: true,
             onboarding_complete: true,
           },
         },
@@ -65,7 +66,8 @@ export async function POST(request: NextRequest) {
               restaurant_id: true,
               name: true,
               has_multiple_branches: true,
-            onboarding_complete: true,
+              status: true,
+              onboarding_complete: true,
             },
           },
           branch: { select: { branch_id: true, branch_name: true } },
@@ -82,6 +84,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
     }
     await upgradePasswordHashIfNeeded(user.id, password, user.password);
+    if (user.restaurant_id && user.restaurant?.status === "Suspended") {
+      return NextResponse.json(
+        {
+          error:
+            "This restaurant is suspended from Restenzo. Please contact support for more information.",
+          errorCode: "RESTAURANT_SUSPENDED",
+        },
+        { status: 403 }
+      );
+    }
     if (
       user.status !== "Active" &&
       user.role === "RESTAURANT_ADMIN" &&

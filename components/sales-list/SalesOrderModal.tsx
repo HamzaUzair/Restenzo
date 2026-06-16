@@ -222,7 +222,10 @@ const SalesOrderModal: React.FC<SalesOrderModalProps> = ({
                       const it = line.item;
                       return (
                         <tr key={it.id}>
-                          <td className="px-4 py-2.5 text-gray-700">{it.name}</td>
+                          <td className="px-4 py-2.5 text-gray-700">
+                            {it.name}
+                            {it.variationName ? ` (${it.variationName})` : ""}
+                          </td>
                           <td className="px-4 py-2.5 text-center text-gray-600">{it.qty}</td>
                           <td className="px-4 py-2.5 text-right text-gray-600">{fmtPkr(it.price)}</td>
                           <td className="px-4 py-2.5 text-right font-semibold text-gray-800">

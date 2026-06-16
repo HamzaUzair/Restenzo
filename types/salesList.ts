@@ -14,6 +14,8 @@ export type OrderType = "Dine In" | "Take Away" | "Delivery";
 export interface SaleItem {
   id: string;
   name: string;
+  /** Parsed from menu item name suffix, e.g. "Pizza (Large)" → "Large". */
+  variationName?: string | null;
   qty: number;
   price: number; // per unit
 }

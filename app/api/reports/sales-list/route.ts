@@ -156,12 +156,21 @@ export async function GET(request: NextRequest) {
             ? latestPayment.external_reference
             : null,
         createdAt: order.created_at.getTime(),
-        items: order.order_items.map((item) => ({
-          id: String(item.item_id),
-          name: item.menu_item.name,
-          qty: Number(item.quantity),
-          price: Number(item.price),
-        })),
+        items: order.order_items.map((item) => {
+          const menuName = item.menu_item.name;
+          const variationMatch = menuName.match(/\(([^)]+)\)$/);
+          const variationName = variationMatch ? variationMatch[1] : null;
+          const cleanName = variationMatch
+            ? menuName.replace(/\s*\([^)]+\)\s*$/, "")
+            : menuName;
+          return {
+            id: String(item.item_id),
+            name: cleanName,
+            variationName,
+            qty: Number(item.quantity),
+            price: Number(item.price),
+          };
+        }),
       };
     });
 

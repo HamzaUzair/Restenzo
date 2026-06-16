@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
   AuthError,
+  assertTenantWriteAccess,
   assertBranchWithinRestaurant,
   normalizeRole,
   requireAuth,
@@ -153,6 +154,7 @@ export async function POST(request: NextRequest) {
     ) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
+    assertTenantWriteAccess(auth);
 
     const body = await request.json();
     const username = String(body.username ?? "").trim();

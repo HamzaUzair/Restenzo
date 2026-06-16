@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
   AuthError,
+  assertTenantWriteAccess,
   getScopedRestaurantId,
   requireAuth,
 } from "@/lib/server-auth";
@@ -107,6 +108,7 @@ export async function POST(request: NextRequest) {
     if (auth.role !== "SUPER_ADMIN" && auth.role !== "RESTAURANT_ADMIN") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
+    assertTenantWriteAccess(auth);
 
     const body = await request.json();
     const { branch_name, address, city, status } = body;
